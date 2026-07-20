@@ -5,7 +5,6 @@ const controller = require('./sujets.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
 const { upload, handleUploadError } = require('../../middlewares/upload');
 const { validate } = require('../../middlewares/validate');
-const optionalAuth    = require('../../middlewares/optionalAuth');
 const downloadLimiter = require('../../middlewares/downloadLimiter');
 
 const setFolder = (folder) => (req, _res, next) => { req.uploadFolder = folder; next(); };
@@ -14,7 +13,8 @@ router.use(verifyToken);
 
 router.get('/',           controller.listerSujets);
 router.get('/:id',        controller.getSujet);
-router.get('/:id/telecharger', optionalAuth, downloadLimiter, controller.telechargerSujet);
+// Télécharger un sujet d'examen (réservé aux utilisateurs authentifiés)
+router.get('/:id/telecharger', downloadLimiter, controller.telechargerSujet);
 
 router.post('/',
   authorize('enseignant', 'admin'),

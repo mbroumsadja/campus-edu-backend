@@ -24,7 +24,7 @@ router.get('/:id',
   controller.getCours
 );
 
-// Télécharger un cours
+// Télécharger un cours (gratuit, accessible publiquement sans compte)
 router.get('/:id/telecharger', 
   optionalAuth, 
   downloadLimiter, 

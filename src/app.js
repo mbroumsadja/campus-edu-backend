@@ -60,10 +60,17 @@ app.use(express.json({ limit: '1mb' }));       // Limite pour éviter les DoS
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // 5. Logging des requêtes HTTP
-app.use(morgan(
-  process.env.NODE_ENV === 'production' ? 'combined' : 'dev',
-  { stream: { write: (msg) => logger.info(msg.trim()) } }
-));
+app.use(morgan((tokens, req, res) => {
+ return [
+   new Date().toISOString(),
+   tokens.method(req, res),
+   tokens.url(req, res),
+   tokens.status(req, res),
+   `${tokens['response-time'](req, res)} ms`,
+   '-',
+   tokens.res(req, res, 'content-length') || 0,
+ ].join(' ');
+}, { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
 // 6. Rate limiting global — protection contre les abus
 const globalLimiter = rateLimit({
