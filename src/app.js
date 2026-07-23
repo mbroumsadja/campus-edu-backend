@@ -8,7 +8,7 @@ const compression  = require('compression');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
-const { connectDB }      = require('./config/database');
+const { connectDB }      = require('./config/database_developpement');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
@@ -33,7 +33,8 @@ app.use(helmet({
 
 // 2. CORS — origines autorisées uniquement
 const allowedOrigins = [
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL || "https://campus-edu-admin.vercel.app",
+  'http://localhost:3001'
 ];
 
 app.use(cors({
@@ -169,7 +170,7 @@ const start = async () => {
     logger.info(`\n${signal} reçu. Arrêt gracieux...`);
     server.close(async () => {
       logger.info('Serveur HTTP fermé.');
-      const { sequelize } = require('./config/database');
+      const { sequelize } = require('./config/database_developpement');
       await sequelize.close();
       logger.info('Pool MySQL fermé. Au revoir 👋');
       process.exit(0);

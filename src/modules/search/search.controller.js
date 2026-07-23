@@ -2,6 +2,7 @@
 const { Cours, Sujet, UE, Filiere, Utilisateur } = require('../../models');
 const { Op }          = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
+const path            = require('path');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search
@@ -79,4 +80,155 @@ const rechercher = async (req, res, next) => {
   }
 };
 
-module.exports = { rechercher };
+// ──────────────────────────────────────────────────────────────────
+//  GET /api/search/documents
+//  Public — recherche de documents (Cours + Sujets d'examen)
+//  Query: 
+//    - nom (requis) : nom du document à rechercher
+//    - niveau (optionnel) : L1, L2, L3, M1, M2
+//    - filiere (optionnel) : code de la filière (ex: INFO, MATH)
+//    - type (optionnel) : pdf, video, slide, autre, partiel, rattrapage, etc.
+//  Retourne : array de documents avec lien téléchargement, taille, type, niveau, filière, code UE
+// ──────────────────────────────────────────────────────────────────
+const rechercherDocuments = async (req, res, next) => {
+  try {
+    const { nom, niveau, filiere, type } = req.query;
+
+    // Validation : le paramètre 'nom' est requis
+    if (!nom || nom.trim() === '') {
+      return error(res, 'Le paramètre "nom" est requis pour rechercher des documents.', 400);
+    }
+
+    // Construire la condition WHERE pour la recherche par nom
+    const searchCondition = {
+      [Op.like]: `%${nom.trim()}%`
+    };
+
+    // Filtre sur l'UE (si niveau ou filière fournis)
+    const ueWhere = {};
+    const filiereWhere = {};
+    
+    if (niveau) ueWhere.niveau = niveau;
+    if (filiere) filiereWhere.code = filiere;
+
+    const includeUE = {
+      model: UE,
+      as: 'ue',
+      where: Object.keys(ueWhere).length > 0 ? ueWhere : undefined,
+      attributes: ['id', 'code', 'intitule', 'niveau'],
+      include: [{
+        model: Filiere,
+        as: 'filiere',
+        where: Object.keys(filiereWhere).length > 0 ? filiereWhere : undefined,
+        attributes: ['id', 'code', 'nom'],
+      }],
+    };
+
+    // Recherche dans les Cours publiés
+    const coursWhere = { 
+      statut: 'publie',
+      titre: searchCondition
+    };
+    if (type) coursWhere.type = type;
+
+    const cours = await Cours.findAll({
+      where: coursWhere,
+      include: [includeUE],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal'],
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Recherche dans les Sujets publiés
+    const sujetWhere = {
+      statut: 'publie',
+      titre: searchCondition
+    };
+    if (type) sujetWhere.type = type;
+
+    const sujets = await Sujet.findAll({
+      where: sujetWhere,
+      include: [includeUE],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee'],
+      order: [['annee', 'DESC']],
+    });
+
+    // Formatter les résultats
+    const documents = [];
+
+    // Ajouter les cours formatés
+    cours.forEach(c => {
+      // Vérifier que l'UE a été trouvée (pour les filtres appliqués)
+      if (c.ue && c.ue.filiere) {
+        documents.push({
+          id: c.id,
+          type_contenu: 'cours',
+          nom: c.titre,
+          type: c.type,
+          lien_telechargement: `/uploads/${c.cheminFichier}`,
+          taille_octets: c.tailleFichier,
+          taille_lisible: formatTaille(c.tailleFichier),
+          niveau: c.ue.niveau,
+          filiere_code: c.ue.filiere.code,
+          filiere_nom: c.ue.filiere.nom,
+          code_ue: c.ue.code,
+          intitule_ue: c.ue.intitule,
+        });
+      }
+    });
+
+    // Ajouter les sujets formatés
+    sujets.forEach(s => {
+      // Vérifier que l'UE a été trouvée (pour les filtres appliqués)
+      if (s.ue && s.ue.filiere) {
+        documents.push({
+          id: s.id,
+          type_contenu: 'sujet_examen',
+          nom: s.titre,
+          type: s.type,
+          lien_telechargement: `/uploads/${s.cheminFichier}`,
+          taille_octets: null,
+          taille_lisible: 'Non disponible',
+          niveau: s.ue.niveau,
+          filiere_code: s.ue.filiere.code,
+          filiere_nom: s.ue.filiere.nom,
+          code_ue: s.ue.code,
+          intitule_ue: s.ue.intitule,
+          annee: s.annee,
+        });
+      }
+    });
+
+    // Trier par date de création décroissante
+    documents.sort((a, b) => {
+      // Les cours en premier, puis les sujets
+      if (a.type_contenu !== b.type_contenu) {
+        return a.type_contenu === 'cours' ? -1 : 1;
+      }
+      return 0;
+    });
+
+    if (documents.length === 0) {
+      return success(res, [], `Aucun document trouvé pour "${nom}"`);
+    }
+
+    return success(res, {
+      nombre_resultats: documents.length,
+      documents: documents,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
+//  Utilitaire : formatter la taille du fichier en lisible (Ko, Mo, Go)
+// ──────────────────────────────────────────────────────────────────
+const formatTaille = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'Ko', 'Mo', 'Go', 'To'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+module.exports = { rechercher, rechercherDocuments };

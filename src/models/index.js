@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database');
+const { sequelize }  = require('../config/database_developpement');  // Utilise la configuration de dev pour le moment
 const { DataTypes }  = require('sequelize');
 
 // ══════════════════════════════════════════════════════════════════
@@ -287,6 +287,9 @@ const AuditLog = sequelize.define('AuditLog', {
     type:         DataTypes.ENUM('succes', 'echec'),
     defaultValue: 'succes',
   },
+  created_at:{
+    type: DataTypes.DATE()
+  }
 }, {
   tableName: 'audit_logs',
   updatedAt:  false, // Un log n'est jamais modifié
