@@ -96,7 +96,7 @@ const rechercherDocuments = async (req, res, next) => {
           type_contenu: 'cours',
           nom: c.titre,
           type: c.type,
-          lien_telechargement: `/uploads/${c.cheminFichier}`,
+          lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}`,
           taille_octets: c.tailleFichier,
           taille_lisible: formatTaille(c.tailleFichier),
           niveau: c.ue.niveau,
@@ -117,7 +117,7 @@ const rechercherDocuments = async (req, res, next) => {
           type_contenu: 'sujet_examen',
           nom: s.titre,
           type: s.type,
-          lien_telechargement: `/uploads/${s.cheminFichier}`,
+          lien_telechargement: `/api/search/documents/telecharger?type=sujet&id=${s.id}`,
           taille_octets: null,
           taille_lisible: 'Non disponible',
           niveau: s.ue.niveau,
@@ -140,13 +140,77 @@ const rechercherDocuments = async (req, res, next) => {
     });
 
     if (documents.length === 0) {
-      return success(res, [], `Aucun document trouvé pour "${nom}"`);
+      return success(res, [], `Aucun document trouvé pour "${nom || q}"`);
     }
 
     return success(res, {
       nombre_resultats: documents.length,
       documents: documents,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
+//  GET /api/search/documents/telecharger
+//  Public — téléchargement de documents sans JWT
+// ──────────────────────────────────────────────────────────────────
+const telechargerDocument = async (req, res, next) => {
+  try {
+    const { type, id, corrige } = req.query;
+    if (!type || !id) {
+      return error(res, 'Les paramètres "type" et "id" sont requis pour le téléchargement.', 400);
+    }
+
+    const documentId = parseInt(id, 10);
+    if (Number.isNaN(documentId)) {
+      return error(res, 'ID invalide.', 400);
+    }
+
+    if (type === 'cours') {
+      const cours = await Cours.findByPk(documentId, {
+        attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
+      });
+
+      if (!cours || cours.statut !== 'publie') {
+        return error(res, 'Cours non disponible.', 404);
+      }
+
+      const filePath = path.resolve(cours.cheminFichier);
+      cours.increment('telechargemements').catch(() => {});
+
+      const ext = path.extname(cours.cheminFichier) || '.pdf';
+      const fallback = `${cours.titre.replace(/\s+/g, '_')}${ext}`;
+      return res.download(filePath, cours.nomFichierOriginal || fallback);
+    }
+
+    if (type === 'sujet') {
+      const sujet = await Sujet.findByPk(documentId, {
+        attributes: ['id', 'titre', 'cheminFichier', 'cheminCorrige', 'statut', 'avecCorrige'],
+      });
+
+      if (!sujet || sujet.statut !== 'publie') {
+        return error(res, 'Sujet non disponible.', 404);
+      }
+
+      const useCorrige = corrige === 'true';
+      if (useCorrige) {
+        if (!sujet.avecCorrige || !sujet.cheminCorrige) {
+          return error(res, 'Aucun corrigé disponible pour ce sujet.', 404);
+        }
+      }
+
+      const filePath = path.resolve(useCorrige ? sujet.cheminCorrige : sujet.cheminFichier);
+      const fileName = useCorrige
+        ? `corrige_${sujet.titre.replace(/\s+/g, '_')}.pdf`
+        : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
+
+      sujet.increment('telechargemements').catch(() => {});
+      return res.download(filePath, fileName);
+    }
+
+    return error(res, 'Type invalide. Utilisez "cours" ou "sujet".', 400);
   } catch (err) {
     next(err);
   }
@@ -163,4 +227,4 @@ const formatTaille = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-module.exports = { rechercherDocuments };
+module.exports = { rechercherDocuments, telechargerDocument };
