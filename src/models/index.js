@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_developpement');  // Utilise la configuration de dev pour le moment
+const { sequelize }  = require('../config/database_production');  // Utilise la configuration de dev pour le moment
 const { DataTypes }  = require('sequelize');
 
 // ══════════════════════════════════════════════════════════════════
