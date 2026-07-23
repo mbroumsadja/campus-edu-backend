@@ -5,82 +5,6 @@ const { success, error } = require('../../utils/apiResponse');
 const path            = require('path');
 
 // ──────────────────────────────────────────────────────────────────
-//  GET /api/search
-//  Public — pas de JWT requis
-//  Query: q (nom du cours/UE), filiere_id, niveau, annee, type
-//  Retourne : { ue: [...], résultats groupés par cours → sujets }
-// ──────────────────────────────────────────────────────────────────
-const rechercher = async (req, res, next) => {
-  try {
-    const { q, filiere_id, niveau, annee, type } = req.query;
-
-    if (!q && !filiere_id && !niveau) {
-      return error(res, 'Veuillez fournir un terme de recherche ou un filtre (filière/niveau).', 400);
-    }
-
-    // Filtre sur l'UE (point commun entre Cours et Sujet)
-    const ueWhere = {};
-    if (filiere_id) ueWhere.filiere_id = filiere_id;
-    if (niveau)     ueWhere.niveau     = niveau;
-    if (q)          ueWhere[Op.or] = [{ intitule: { [Op.like]: `%${q}%` } }, { code: { [Op.like]: `%${q}%` } }];
-
-    const includeUE = {
-      model: UE,
-      as: 'ue',
-      where: ueWhere,
-      attributes: ['id', 'code', 'intitule', 'niveau', 'semestre'],
-      include: [{ model: Filiere, as: 'filiere', attributes: ['id', 'nom', 'code'] }],
-    };
-
-    // Cours (uniquement publiés — accès public)
-    const coursWhere = { statut: 'publie' };
-    if (type)  coursWhere.type = type;
-    if (annee) coursWhere.anneAcademique = annee;
-
-    const cours = await Cours.findAll({
-      where: coursWhere,
-      include: [includeUE, { model: Utilisateur, as: 'enseignant', attributes: ['nom', 'prenom'] }],
-      attributes: ['id', 'titre', 'description', 'type', 'nomFichierOriginal', 'tailleFichier', 'anneAcademique', 'vues', 'telechargemements'],
-      order: [['createdAt', 'DESC']],
-    });
-
-    // Sujets (uniquement publiés)
-    const sujetWhere = { statut: 'publie' };
-    if (annee) sujetWhere.annee = parseInt(annee);
-
-    const sujets = await Sujet.findAll({
-      where: sujetWhere,
-      include: [includeUE, { model: Utilisateur, as: 'enseignant', attributes: ['nom', 'prenom'] }],
-      attributes: ['id', 'titre', 'type', 'session', 'annee', 'avecCorrige', 'telechargemements'],
-      order: [['annee', 'DESC']],
-    });
-
-    // ── Regroupement par UE → { niveau, filiere, cours[], sujets[] } ──
-    const groupes = {};
-
-    const ajouter = (item, cle) => {
-      const ueId = item.ue.id;
-      if (!groupes[ueId]) {
-        groupes[ueId] = {
-          ue: { id: item.ue.id, code: item.ue.code, intitule: item.ue.intitule, niveau: item.ue.niveau },
-          filiere: item.ue.filiere,
-          cours: [],
-          sujets: [],
-        };
-      }
-      groupes[ueId][cle].push(item);
-    };
-
-    cours.forEach(c => ajouter(c, 'cours'));
-    sujets.forEach(s => ajouter(s, 'sujets'));
-
-    return success(res, Object.values(groupes));
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
 //  Public — recherche de documents (Cours + Sujets d'examen)
 //  Query: 
@@ -92,16 +16,17 @@ const rechercher = async (req, res, next) => {
 // ──────────────────────────────────────────────────────────────────
 const rechercherDocuments = async (req, res, next) => {
   try {
-    const { nom, niveau, filiere, type } = req.query;
+    const { nom, q, niveau, filiere, type } = req.query;
+    const searchTerm = (nom || q || '').trim();
 
-    // Validation : le paramètre 'nom' est requis
-    if (!nom || nom.trim() === '') {
-      return error(res, 'Le paramètre "nom" est requis pour rechercher des documents.', 400);
+    // Validation : le paramètre 'nom' ou 'q' est requis
+    if (!searchTerm) {
+      return error(res, 'Le paramètre "nom" ou "q" est requis pour rechercher des documents.', 400);
     }
 
     // Construire la condition WHERE pour la recherche par nom
     const searchCondition = {
-      [Op.like]: `%${nom.trim()}%`
+      [Op.iLike]: `%${searchTerm}%`
     };
 
     // Filtre sur l'UE (si niveau ou filière fournis)
@@ -115,11 +40,13 @@ const rechercherDocuments = async (req, res, next) => {
       model: UE,
       as: 'ue',
       where: Object.keys(ueWhere).length > 0 ? ueWhere : undefined,
+      required: Boolean(niveau || filiere),
       attributes: ['id', 'code', 'intitule', 'niveau'],
       include: [{
         model: Filiere,
         as: 'filiere',
         where: Object.keys(filiereWhere).length > 0 ? filiereWhere : undefined,
+        required: Boolean(filiere),
         attributes: ['id', 'code', 'nom'],
       }],
     };
@@ -127,7 +54,12 @@ const rechercherDocuments = async (req, res, next) => {
     // Recherche dans les Cours publiés
     const coursWhere = { 
       statut: 'publie',
-      titre: searchCondition
+      [Op.or]: [
+        { titre: searchCondition },
+        { nomFichierOriginal: searchCondition },
+        { '$ue.intitule$': searchCondition },
+        { '$ue.code$': searchCondition },
+      ],
     };
     if (type) coursWhere.type = type;
 
@@ -231,4 +163,4 @@ const formatTaille = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-module.exports = { rechercher, rechercherDocuments };
+module.exports = { rechercherDocuments };

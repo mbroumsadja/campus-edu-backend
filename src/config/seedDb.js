@@ -61,7 +61,7 @@ const seed = async () => {
       { code: 'INFF422', intitule: 'Traitement et analyse d\'images',niveau: 'M1', semestre: 'S8', credits: 6 },
       { code: 'INFF432', intitule: 'Codage Algebrique et cryptographie',niveau: 'M1', semestre: 'S8', credits: 6 },
       { code: 'INFF442', intitule: 'Optimisation et controle',niveau: 'M1', semestre: 'S8', credits: 6 },
-      { code: 'INFF452', intitule: 'Aqpects juridiques et ethiques de l\'ingenierie informatique',niveau: 'M1', semestre: 'S8', credits: 3 },
+      { code: 'INFF452', intitule: 'Aspects juridiques et ethiques de l\'ingenierie informatique',niveau: 'M1', semestre: 'S8', credits: 3 },
       { code: 'INFF462', intitule: 'Base de donnees avancees',niveau: 'M1', semestre: 'S8', credits: 3 },
       { code: 'INFF472', intitule: 'Systeme distribues',niveau: 'M1', semestre: 'S8', credits: 3 }
     ];
