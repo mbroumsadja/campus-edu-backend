@@ -59,9 +59,11 @@ describe('GET /api/mon-endpoint', () => {
 
 ### documents.test.js
 Tests pour l'endpoint `/api/search/documents` qui recherche des documents (cours et sujets) selon les critères :
-- nom (obligatoire)
+- nom / q (obligatoire)
 - niveau (optionnel)
-- filiere (optionnel)
+- filiere / filiere_id (optionnel)
+- ecole / ecole_id (optionnel)
+- annee (optionnel)
 - type (optionnel)
 
 Voir la documentation complète : [SEARCH_DOCUMENTS_API.md](../../SEARCH_DOCUMENTS_API.md)

@@ -114,6 +114,14 @@ POST /api/auth/login
 
 ---
 
+### Recherche publique — `/api/search/documents`
+
+| Méthode | Route                   | Accès | Description |
+|---------|-------------------------|-------|-------------|
+| GET     | `/documents`            | Public | Recherche de cours et sujets avec filtres `q`, `nom`, `niveau`, `filiere`, `ecole`, `annee`, `type` |
+
+---
+
 ### Utilisateurs — `/api/users`
 
 | Méthode | Route              | Accès  | Description                     |
@@ -124,6 +132,52 @@ POST /api/auth/login
 | PUT     | `/:id`             | Admin  | Modifier                        |
 | PATCH   | `/:id/statut`      | Admin  | Activer / suspendre             |
 | DELETE  | `/:id`             | Admin  | Supprimer                       |
+
+---
+
+## Sécurité des commits
+
+Avant de pousser vers un dépôt partagé ou de préparer une version de production :
+
+- ne commitez jamais `*.env`, `uploads/`, `logs/`, `coverage/`, ni les fichiers de base de données locales (`*.sqlite`, `*.sqlite3`).
+- utilisez `.gitignore` pour exclure les fichiers locaux et les données de test.
+- conservez uniquement le code source et les scripts nécessaires à l'exécution en production.
+
+## Docker
+
+Pour exécuter le projet avec Docker et MySQL :
+
+1. Copier le fichier d'environnement
+
+```bash
+cp .env.example .env
+```
+
+2. Modifier `.env` si besoin (par exemple `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`).
+
+3. Construire et démarrer les conteneurs :
+
+```bash
+docker compose up --build -d
+```
+
+4. Initialiser la base de données :
+
+```bash
+docker compose exec app npm run db:seed
+```
+
+5. Vérifier que l'API est disponible :
+
+```bash
+http://localhost:3000/health
+```
+
+6. Arrêter les conteneurs :
+
+```bash
+docker compose down
+```
 
 ---
 

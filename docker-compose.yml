@@ -1,0 +1,39 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: campus-edu-backend
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    depends_on:
+      - db
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+    command: npm start
+
+  db:
+    image: mysql:8.0
+    container_name: campus-edu-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-mbroumsadja}
+      MYSQL_DATABASE: ${DB_NAME:-campus_edu}
+      MYSQL_USER: ${DB_USER:-mbroumsadja}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-mbroumsadja}
+    ports:
+      - '3306:3306'
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:

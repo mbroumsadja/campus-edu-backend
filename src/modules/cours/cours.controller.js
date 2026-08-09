@@ -1,6 +1,6 @@
 // src/modules/cours/cours.controller.js
 
-const { Cours, UE, Utilisateur, Filiere } = require('../../models');
+const { Cours, UE, Utilisateur, Filiere, Telechargement } = require('../../models');
 const { Op }             = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const path               = require('path');
@@ -110,10 +110,19 @@ const telechargerCours = async (req, res, next) => {
     const filePath = path.resolve(cours.cheminFichier);
     cours.increment('telechargemements').catch(() => {});
 
-  const ext = path.extname(cours.cheminFichier) || '.pdf'
-  const fallback = `cours_${cours.id}${ext}`
+    if (req.user) {
+      Telechargement.create({
+        utilisateur_id: req.user.id,
+        cours_id: cours.id,
+        ipAddress: req.ip || req.connection?.remoteAddress || null,
+        userAgent: req.get('User-Agent'),
+      }).catch(() => {});
+    }
 
-  return res.download(filePath, cours.nomFichierOriginal || fallback)
+    const ext = path.extname(cours.cheminFichier) || '.pdf';
+    const fallback = `cours_${cours.id}${ext}`;
+
+    return res.download(filePath, cours.nomFichierOriginal || fallback);
 
   } catch (err) {
     next(err);
@@ -186,8 +195,8 @@ const supprimerCours = async (req, res, next) => {
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
     // Option: supprimer aussi le fichier physique
-    // const fs = require('fs');
-    // if (fs.existsSync(cours.cheminFichier)) fs.unlinkSync(cours.cheminFichier);
+    const fs = require('fs');
+    if (fs.existsSync(cours.cheminFichier)) fs.unlinkSync(cours.cheminFichier);
 
     await cours.destroy();
     return success(res, {}, 'Cours supprimé.');

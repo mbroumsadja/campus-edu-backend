@@ -1,8 +1,22 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_production');  // Utilise la configuration de dev pour le moment
+const { sequelize }  = require('../config/database_developpement');
 const { DataTypes }  = require('sequelize');
+// ══════════════════════════════════════════════════════════════════
+// MODELE ECOLE
+// ══════════════════════════════════════════════════════════════════
+const Ecole = sequelize.define('Ecole',{
+  id:{
+    type:   DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  ecole:{
+    type: DataTypes.STRING,
+    allowNull: false
+  }
+},{tableName: 'ecoles'});
 
 // ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Filière
@@ -14,7 +28,7 @@ const Filiere = sequelize.define('Filiere', {
     primaryKey:    true,
   },
   code: {
-    type:      DataTypes.STRING(20),
+    type:      DataTypes.STRING(3),
     allowNull: false,
     unique:    true,
     comment:   'Ex: INFO, MATH, GC',
@@ -27,6 +41,11 @@ const Filiere = sequelize.define('Filiere', {
   departement: {
     type:    DataTypes.STRING(100),
     comment: 'Ex: Sciences & Technologies',
+  },
+  ecole_id: {
+    type:      DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Référence vers l\'école responsable de la filière',
   },
   actif: {
     type:         DataTypes.BOOLEAN,
@@ -258,6 +277,39 @@ const Sujet = sequelize.define('Sujet', {
   ],
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  MODÈLE : Historique des téléchargements de cours
+// ══════════════════════════════════════════════════════════════════
+const Telechargement = sequelize.define('Telechargement', {
+  id: {
+    type:          DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey:    true,
+  },
+  utilisateur_id: {
+    type:      DataTypes.INTEGER,
+    allowNull: false,
+  },
+  cours_id: {
+    type:      DataTypes.INTEGER,
+    allowNull: false,
+  },
+  ipAddress: {
+    type: DataTypes.STRING(45),
+  },
+  userAgent: {
+    type: DataTypes.STRING(300),
+  },
+}, {
+  tableName: 'telechargements',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { fields: ['utilisateur_id'] },
+    { fields: ['cours_id'] },
+  ],
+});
+
 
 // ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Journal d'audit (sécurité)
@@ -304,6 +356,9 @@ const AuditLog = sequelize.define('AuditLog', {
 // ══════════════════════════════════════════════════════════════════
 //  ASSOCIATIONS
 // ══════════════════════════════════════════════════════════════════
+// Ecole - Filière
+Ecole.hasMany(Filiere,{foreignKey:'ecole_id', as: 'filiere'});
+Filiere.belongsTo(Ecole, {foreignKey:'ecole_id', as: 'ecole'});
 
 // Filière → Utilisateurs (étudiants)
 Filiere.hasMany(Utilisateur, { foreignKey: 'filiere_id', as: 'etudiants' });
@@ -329,9 +384,16 @@ Cours.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
 Utilisateur.hasMany(Sujet, { foreignKey: 'enseignant_id', as: 'sujetsDeposes' });
 Sujet.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
 
+// Téléchargements utilisateur → Cours
+Utilisateur.hasMany(Telechargement, { foreignKey: 'utilisateur_id', as: 'telechargements' });
+Telechargement.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
+
+Cours.hasMany(Telechargement, { foreignKey: 'cours_id', as: 'telechargementsHistorique' });
+Telechargement.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
+
 // Utilisateur → AuditLogs
 Utilisateur.hasMany(AuditLog, { foreignKey: 'utilisateur_id', as: 'logs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
 
 
-module.exports = { sequelize, Filiere, Utilisateur, UE, Cours, Sujet, AuditLog };
+module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, Sujet, Telechargement, AuditLog };

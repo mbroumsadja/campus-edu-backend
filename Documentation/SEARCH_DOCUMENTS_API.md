@@ -9,8 +9,13 @@ Recherche des documents (cours et sujets d'examen) dans la base de données selo
 | Paramètre | Type | Obligatoire | Description |
 |-----------|------|-------------|-------------|
 | `nom` | string | ✅ Oui | Nom du document à rechercher (recherche partielle) |
+| `q` | string | ✅ Oui | Alias global pour la recherche texte |
 | `niveau` | string | ❌ Non | Niveau d'étude : `L1`, `L2`, `L3`, `M1`, `M2` |
 | `filiere` | string | ❌ Non | Code de la filière (ex: `INFO`, `MATH`, `GC`) |
+| `filiere_id` | integer | ❌ Non | Identifiant de la filière |
+| `ecole` | string | ❌ Non | Nom de l'école |
+| `ecole_id` | integer | ❌ Non | Identifiant de l'école |
+| `annee` | string/integer | ❌ Non | Année académique (`2025-2026`) ou année de sujet (`2025`) |
 | `type` | string | ❌ Non | Type de document : `pdf`, `video`, `slide`, `autre` (pour cours) ou `partiel`, `rattrapage`, `terminal`, `tp`, `td` (pour sujets) |
 
 ### Réponse (Succès - 200)
@@ -32,8 +37,10 @@ Recherche des documents (cours et sujets d'examen) dans la base de données selo
         "niveau": "L2",
         "filiere_code": "INFO",
         "filiere_nom": "Informatique",
+        "ecole_nom": "Ecole Centrale",
         "code_ue": "INFO201",
-        "intitule_ue": "Algorithmique Avancée"
+        "intitule_ue": "Algorithmique Avancée",
+        "annee_academique": "2025-2026"
       },
       {
         "id": 2,

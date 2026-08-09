@@ -1,8 +1,38 @@
+# Dependencies
 node_modules/
+
+# Environment variables
 .env
+.env.*
+
+# Uploads and generated files
 uploads/
-config/resetDb.js
-config/seedDb.js
 logs/
-*.log
+coverage/
+
+# Local project files
+.vscode/
+.idea/
 .DS_Store
+
+# Runtime artifacts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+*.tmp
+*.sqlite
+*.sqlite3
+
+# Build output
+dist/
+build/
+
+# Docker overrides
+docker-compose.override.yml
+
+# Local test or seed scripts output
+uploads/test/
+
+# Keep dev scripts in repo but do not commit generated data
+# (Reset/seed scripts are part of the project, not runtime data.)

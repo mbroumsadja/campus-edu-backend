@@ -18,12 +18,20 @@ router.post('/',
   [
     body('code').trim().notEmpty().withMessage('Code obligatoire'),
     body('nom').trim().notEmpty().withMessage('Nom obligatoire'),
+    body('ecole_id').notEmpty().withMessage('Ecole obligatoire').bail().isInt().withMessage('Ecole invalide'),
   ],
   validate,
   controller.creerFiliere
 );
 
-router.put('/:id', authorize('admin'), controller.modifierFiliere);
+router.put('/:id',
+  authorize('admin'),
+  [
+    body('ecole_id').optional().isInt().withMessage('Ecole invalide'),
+  ],
+  validate,
+  controller.modifierFiliere
+);
 
 // Créer une UE dans une filière
 router.post('/:id/ues',

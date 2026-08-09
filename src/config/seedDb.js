@@ -1,7 +1,7 @@
 require('dotenv').config();
 const bcrypt    = require('bcryptjs');
 
-const { sequelize, Filiere, UE, Utilisateur } = require('../models');
+const { sequelize, Ecole, Filiere, UE, Utilisateur } = require('../models');
 const logger    = require('../utils/logger');
 
 const seed = async () => {
@@ -9,40 +9,58 @@ const seed = async () => {
     await sequelize.sync({ alter: true });
     logger.info('Tables synchronisées');
 
+    // ── Écoles ────────────────────────────────────────────────────
+    const [ecoleCentrale] = await Ecole.findOrCreate({
+      where: { ecole: 'Ecole Centrale' },
+      defaults: { ecole: 'Ecole Centrale' },
+    });
+
+    const [ecoleSuperieure] = await Ecole.findOrCreate({
+      where: { ecole: 'Institut Supérieur' },
+      defaults: { ecole: 'Institut Supérieur' },
+    });
+
+    const [ecoleYaounde] = await Ecole.findOrCreate({
+      where: { ecole: 'Université de Yaoundé' },
+      defaults: { ecole: 'Université de Yaoundé' },
+    });
+
+    logger.info('Écoles créées ✓');
+
     // ── Filières ──────────────────────────────────────────────────
     const [infoFiliere] = await Filiere.findOrCreate({
       where: { code: 'INF' },
-      defaults: { nom: 'Informatique', departement: 'Mathematique et Informatique' },
+      defaults: { nom: 'Informatique', departement: 'Mathematique et Informatique', ecole_id: ecoleCentrale.id },
     });
 
     const [mathFiliere] = await Filiere.findOrCreate({
       where: { code: 'MAT' },
-      defaults: { nom: 'Mathématiques', departement: 'Mathematique et Informatique' },
+      defaults: { nom: 'Mathématiques', departement: 'Mathematique et Informatique', ecole_id: ecoleSuperieure.id },
     });
 
     const [chimieFiliere] = await Filiere.findOrCreate({
       where: { code: 'CHIM' },
-      defaults: { nom: 'Chimie', departement: 'Chimie' },
+      defaults: { nom: 'Chimie', departement: 'Chimie', ecole_id: ecoleYaounde.id },
     });
 
     const [physiqueFiliere] = await Filiere.findOrCreate({
       where: { code: 'PHY' },
-      defaults: { nom: 'Physique', departement: 'Physique' },
+      defaults: { nom: 'Physique', departement: 'Physique', ecole_id: ecoleCentrale.id },
     });
 
     const [energieRenouvelaleFiliere] = await Filiere.findOrCreate({
       where: { code: 'ERN' },
-      defaults: { nom: 'Energie_renouvelable', departement: 'Energie_renouvelable' },
+      defaults: { nom: 'Energie_renouvelable', departement: 'Energie_renouvelable', ecole_id: ecoleSuperieure.id },
     });
 
     const [ScicenceBiologieFiliere] = await Filiere.findOrCreate({
       where: { code: 'BIO' },
-      defaults: { nom: 'Biologie', departement: 'Science_Biologie_et_de_la_terre' },
+      defaults: { nom: 'Biologie', departement: 'Science_Biologie_et_de_la_terre', ecole_id: ecoleYaounde.id },
     });
 
     const [ScienceTerreFiliere] = await Filiere.findOrCreate({
       where: { code: 'STE' },
-      defaults: { nom: 'Science_terre', departement: 'Science Biologie_et_de_la_terre' },
+      defaults: { nom: 'Science_terre', departement: 'Science Biologie_et_de_la_terre', ecole_id: ecoleYaounde.id },
     });
 
     logger.info('Filières créées ✓');

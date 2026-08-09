@@ -8,7 +8,7 @@ const compression  = require('compression');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
-const { connectDB }      = require('./config/database_production');
+const { connectDB }      = require('./config/database_developpement');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
@@ -18,6 +18,7 @@ const usersRoutes    = require('./modules/users/users.routes');
 const coursRoutes    = require('./modules/cours/cours.routes');
 const sujetsRoutes   = require('./modules/sujets/sujets.routes');
 const filieresRoutes = require('./modules/filieres/filieres.routes');
+const ecolesRoutes   = require('./modules/ecoles/ecoles.routes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -28,23 +29,37 @@ const PORT = process.env.PORT || 3000;
 
 // 1. Sécurité HTTP (headers)
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Permet le téléchargement de fichiers
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // 2. CORS — origines autorisées uniquement
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "https://campus-edu-admin.vercel.app",
-  'http://localhost:3001'
+  (process.env.FRONTEND_URL || 'http://localhost:3001').trim(),
+  'http://127.0.0.1:3001',
 ];
+
+const isLocalOrigin = (origin) => {
+  return /^(http:\/\/(localhost|127\.0\.0\.1):\d+)$/.test(origin);
+};
 
 app.use(cors({
   origin: (origin, callback) => {
+    const normalizedOrigin = origin ? origin.trim() : origin;
+
     // Autoriser les requêtes sans origin (Postman, curl) en dev
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS bloqué pour l'origine : ${origin}`));
+    if (!normalizedOrigin) {
+      return callback(null, true);
     }
+
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
+    if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
+    callback(new Error(`CORS bloqué pour l'origine : ${normalizedOrigin}`));
   },
   credentials: true,
   methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -111,6 +126,7 @@ app.use('/api/users',    usersRoutes);
 app.use('/api/cours',    coursRoutes);
 app.use('/api/sujets',   sujetsRoutes);
 app.use('/api/filieres', filieresRoutes);
+app.use('/api/ecoles', ecolesRoutes);
 app.use('/api/search', require('./modules/search/search.routes'));
 
 // Route de santé (healthcheck — utile pour Docker / load balancer)
@@ -125,7 +141,7 @@ app.get('/health', (_req, res) => {
 
 // Route de test CORS (pratique pour débugger depuis le navigateur)
 app.get('/api/ping', (_req, res) => {
-  res.json({ success: true, message: 'Backend UniPortal opérationnel 🚀' });
+  res.json({ success: true, message: 'Backend Campus edu opérationnel 🚀' });
 });
 
 // Route de diagnostic (UNIQUEMENT en développement)
@@ -172,7 +188,7 @@ const start = async () => {
       logger.info('Serveur HTTP fermé.');
       const { sequelize } = require('./config/database_developpement');
       await sequelize.close();
-      logger.info('Pool MySQL fermé. Au revoir 👋');
+      logger.info('Pool de connexions fermé. Au revoir 👋');
       process.exit(0);
     });
     // Force l'arrêt après 10s si quelque chose bloque
@@ -188,6 +204,8 @@ const start = async () => {
   });
 };
 
-start();
+if (require.main === module) {
+  start();
+}
 
-module.exports = app; // Pour les tests
+module.exports = app;

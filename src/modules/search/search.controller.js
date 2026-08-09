@@ -1,128 +1,173 @@
 // src/modules/search/search.controller.js
-const { Cours, Sujet, UE, Filiere, Utilisateur } = require('../../models');
-const { Op }          = require('sequelize');
+const { Cours, Sujet, UE, Filiere, Ecole, Telechargement } = require('../../models');
+const { Op } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
-const path            = require('path');
+const path = require('path');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
 //  Public — recherche de documents (Cours + Sujets d'examen)
-//  Query: 
-//    - nom (requis) : nom du document à rechercher
+//  Query:
+//    - nom ou q (requis) : texte à rechercher
 //    - niveau (optionnel) : L1, L2, L3, M1, M2
 //    - filiere (optionnel) : code de la filière (ex: INFO, MATH)
-//    - type (optionnel) : pdf, video, slide, autre, partiel, rattrapage, etc.
-//  Retourne : array de documents avec lien téléchargement, taille, type, niveau, filière, code UE
+//    - filiere_id (optionnel) : identifiant de la filière
+//    - ecole (optionnel) : nom de l'école
+//    - ecole_id (optionnel) : identifiant de l'école
+//    - annee (optionnel) : année académique ou année de sujet
+//    - type (optionnel) : pdf, video, slide, autre, partiel, rattrapage, terminal, tp, td
+//  Retourne : liste de documents avec lien de téléchargement, type, niveau, filière, école, code UE
 // ──────────────────────────────────────────────────────────────────
 const rechercherDocuments = async (req, res, next) => {
   try {
-    const { nom, q, niveau, filiere, type } = req.query;
+    const { nom, q, niveau, filiere, filiere_id, ecole, ecole_id, type, annee } = req.query;
     const searchTerm = (nom || q || '').trim();
 
-    // Validation : le paramètre 'nom' ou 'q' est requis
     if (!searchTerm) {
       return error(res, 'Le paramètre "nom" ou "q" est requis pour rechercher des documents.', 400);
     }
 
-    // Construire la condition WHERE pour la recherche par nom
-    const searchCondition = {
-      [Op.iLike]: `%${searchTerm}%`
-    };
+    const searchCondition = { [Op.like]: `%${searchTerm}%` };
 
-    // Filtre sur l'UE (si niveau ou filière fournis)
     const ueWhere = {};
     const filiereWhere = {};
-    
+    const ecoleWhere = {};
+
     if (niveau) ueWhere.niveau = niveau;
     if (filiere) filiereWhere.code = filiere;
+    if (filiere_id) filiereWhere.id = Number(filiere_id);
+    if (ecole) ecoleWhere.ecole = ecole;
+    if (ecole_id) ecoleWhere.id = Number(ecole_id);
+
+    const includeEcole = {
+      model: Ecole,
+      as: 'ecole',
+      where: Object.keys(ecoleWhere).length > 0 ? ecoleWhere : undefined,
+      required: Boolean(ecole || ecole_id),
+      attributes: ['id', 'ecole'],
+    };
+
+    const includeFiliere = {
+      model: Filiere,
+      as: 'filiere',
+      where: Object.keys(filiereWhere).length > 0 ? filiereWhere : undefined,
+      required: Boolean(filiere || filiere_id || ecole || ecole_id),
+      attributes: ['id', 'code', 'nom'],
+      include: [includeEcole],
+    };
 
     const includeUE = {
       model: UE,
       as: 'ue',
       where: Object.keys(ueWhere).length > 0 ? ueWhere : undefined,
-      required: Boolean(niveau || filiere),
+      required: Boolean(niveau || filiere || filiere_id || ecole || ecole_id),
       attributes: ['id', 'code', 'intitule', 'niveau'],
-      include: [{
-        model: Filiere,
-        as: 'filiere',
-        where: Object.keys(filiereWhere).length > 0 ? filiereWhere : undefined,
-        required: Boolean(filiere),
-        attributes: ['id', 'code', 'nom'],
-      }],
+      include: [includeFiliere],
     };
 
-    // Recherche dans les Cours publiés
-    const coursWhere = { 
+    const coursWhere = {
       statut: 'publie',
       [Op.or]: [
         { titre: searchCondition },
         { nomFichierOriginal: searchCondition },
         { '$ue.intitule$': searchCondition },
         { '$ue.code$': searchCondition },
+        { '$ue.filiere.code$': searchCondition },
+        { '$ue.filiere.nom$': searchCondition },
+        { '$ue.filiere.ecole.ecole$': searchCondition },
       ],
     };
-    if (type) coursWhere.type = type;
+
+    const sujetWhere = {
+      statut: 'publie',
+      [Op.or]: [
+        { titre: searchCondition },
+        { '$ue.intitule$': searchCondition },
+        { '$ue.code$': searchCondition },
+        { '$ue.filiere.code$': searchCondition },
+        { '$ue.filiere.nom$': searchCondition },
+        { '$ue.filiere.ecole.ecole$': searchCondition },
+      ],
+    };
+
+    if (type) {
+      coursWhere.type = type;
+      sujetWhere.type = type;
+    }
+
+    if (annee) {
+      coursWhere.anneAcademique = annee;
+      const parsedYear = parseInt(annee, 10);
+      if (!Number.isNaN(parsedYear)) {
+        sujetWhere.annee = parsedYear;
+      }
+    }
 
     const cours = await Cours.findAll({
       where: coursWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal'],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal', 'anneAcademique', 'telechargemements'],
       order: [['createdAt', 'DESC']],
     });
-
-    // Recherche dans les Sujets publiés
-    const sujetWhere = {
-      statut: 'publie',
-      titre: searchCondition
-    };
-    if (type) sujetWhere.type = type;
 
     const sujets = await Sujet.findAll({
       where: sujetWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee'],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargemements'],
       order: [['annee', 'DESC']],
     });
 
-    // Formatter les résultats
     const documents = [];
+    const downloadedCourseIds = new Set();
+    if (req.user) {
+      const downloadedRows = await Telechargement.findAll({
+        where: { utilisateur_id: req.user.id },
+        attributes: ['cours_id'],
+      });
+      downloadedRows.forEach(row => downloadedCourseIds.add(row.cours_id));
+    }
 
-    // Ajouter les cours formatés
     cours.forEach(c => {
-      // Vérifier que l'UE a été trouvée (pour les filtres appliqués)
       if (c.ue && c.ue.filiere) {
         documents.push({
           id: c.id,
           type_contenu: 'cours',
           nom: c.titre,
           type: c.type,
+          disponible: true,
+          deja_telecharge: downloadedCourseIds.has(c.id),
+          telechargements: c.telechargemements,
           lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}`,
           taille_octets: c.tailleFichier,
           taille_lisible: formatTaille(c.tailleFichier),
           niveau: c.ue.niveau,
           filiere_code: c.ue.filiere.code,
           filiere_nom: c.ue.filiere.nom,
+          ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
           code_ue: c.ue.code,
           intitule_ue: c.ue.intitule,
+          annee_academique: c.anneAcademique || null,
         });
       }
     });
 
-    // Ajouter les sujets formatés
     sujets.forEach(s => {
-      // Vérifier que l'UE a été trouvée (pour les filtres appliqués)
       if (s.ue && s.ue.filiere) {
         documents.push({
           id: s.id,
           type_contenu: 'sujet_examen',
           nom: s.titre,
           type: s.type,
+          disponible: true,
+          deja_telecharge: false,
+          telechargements: s.telechargemements,
           lien_telechargement: `/api/search/documents/telecharger?type=sujet&id=${s.id}`,
           taille_octets: null,
           taille_lisible: 'Non disponible',
           niveau: s.ue.niveau,
           filiere_code: s.ue.filiere.code,
           filiere_nom: s.ue.filiere.nom,
+          ecole_nom: s.ue.filiere.ecole ? s.ue.filiere.ecole.ecole : null,
           code_ue: s.ue.code,
           intitule_ue: s.ue.intitule,
           annee: s.annee,
@@ -130,9 +175,7 @@ const rechercherDocuments = async (req, res, next) => {
       }
     });
 
-    // Trier par date de création décroissante
     documents.sort((a, b) => {
-      // Les cours en premier, puis les sujets
       if (a.type_contenu !== b.type_contenu) {
         return a.type_contenu === 'cours' ? -1 : 1;
       }
@@ -140,12 +183,15 @@ const rechercherDocuments = async (req, res, next) => {
     });
 
     if (documents.length === 0) {
-      return success(res, [], `Aucun document trouvé pour "${nom || q}"`);
+      return success(res, {
+        nombre_resultats: 0,
+        documents: [],
+      }, `Aucun document trouvé pour "${nom || q}"`);
     }
 
     return success(res, {
       nombre_resultats: documents.length,
-      documents: documents,
+      documents,
     });
   } catch (err) {
     next(err);
@@ -179,6 +225,15 @@ const telechargerDocument = async (req, res, next) => {
 
       const filePath = path.resolve(cours.cheminFichier);
       cours.increment('telechargemements').catch(() => {});
+
+      if (req.user) {
+        Telechargement.create({
+          utilisateur_id: req.user.id,
+          cours_id: cours.id,
+          ipAddress: req.ip || req.connection?.remoteAddress || null,
+          userAgent: req.get('User-Agent'),
+        }).catch(() => {});
+      }
 
       const ext = path.extname(cours.cheminFichier) || '.pdf';
       const fallback = `${cours.titre.replace(/\s+/g, '_')}${ext}`;

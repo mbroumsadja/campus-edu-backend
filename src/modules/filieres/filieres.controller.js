@@ -1,6 +1,6 @@
 // src/modules/filieres/filieres.controller.js
 
-const { Filiere, UE, Utilisateur } = require('../../models');
+const { Filiere, UE, Utilisateur, Ecole } = require('../../models');
 const { success, created, error }  = require('../../utils/apiResponse');
 
 // GET /filieres
@@ -34,8 +34,11 @@ const getFiliere = async (req, res, next) => {
 // POST /filieres — Admin
 const creerFiliere = async (req, res, next) => {
   try {
-    const { code, nom, departement } = req.body;
-    const filiere = await Filiere.create({ code: code.toUpperCase(), nom, departement });
+    const { code, nom, departement, ecole_id } = req.body;
+    const ecole = await Ecole.findByPk(ecole_id);
+    if (!ecole) return error(res, 'École introuvable.', 400);
+
+    const filiere = await Filiere.create({ code: code.toUpperCase(), nom, departement, ecole_id });
     return created(res, filiere, 'Filière créée.');
   } catch (err) { next(err); }
 };
@@ -45,6 +48,10 @@ const modifierFiliere = async (req, res, next) => {
   try {
     const filiere = await Filiere.findByPk(req.params.id);
     if (!filiere) return error(res, 'Filière introuvable.', 404);
+    if (req.body.ecole_id) {
+      const ecole = await Ecole.findByPk(req.body.ecole_id);
+      if (!ecole) return error(res, 'École introuvable.', 400);
+    }
     await filiere.update(req.body);
     return success(res, filiere, 'Filière mise à jour.');
   } catch (err) { next(err); }

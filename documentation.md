@@ -223,11 +223,11 @@ L'application se connecte à une base de données PostgreSQL via Sequelize et ut
   - accès : `admin`
   - corps JSON : `{ statut: "publie" | "archive" | "en_attente" }`
 
-### Recherche publique `/api/search`
+### Recherche publique `/api/search/documents`
 
-- `GET /api/search`
+- `GET /api/search/documents`
   - public
-  - query params : `q`, `filiere_id`, `niveau`, `annee`, `type`
+  - query params : `q`, `nom`, `ecole`, `ecole_id`, `filiere`, `filiere_id`, `niveau`, `annee`, `type`
   - recherche groupée par UE avec les cours et sujets associés
 
 ### Routes utilitaires
