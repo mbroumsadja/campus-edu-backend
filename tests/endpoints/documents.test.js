@@ -27,14 +27,21 @@ describe('GET /api/search/documents', () => {
     expect(res.body.data.nombre_resultats).toBeGreaterThanOrEqual(1);
   });
 
-  // Test 2 : Recherche sans le paramètre obligatoire "nom"
-  it('devrait retourner une erreur si "nom" n\'est pas fourni', async () => {
+  // Test 2 : Recherche par filtre sans mot-clé
+  it('devrait retourner les documents quand une filière est fournie sans terme de recherche', async () => {
     const res = await request(app)
       .get('/api/search/documents')
-      .query({});
+      .query({ filiere: 'INF' });
     
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('documents');
+    expect(Array.isArray(res.body.data.documents)).toBe(true);
+    if (res.body.data.documents.length > 0) {
+      res.body.data.documents.forEach(doc => {
+        expect(doc.filiere_code).toBe('INF');
+      });
+    }
   });
 
   // Test 3 : Recherche avec filtre de niveau
@@ -83,6 +90,22 @@ describe('GET /api/search/documents', () => {
       res.body.data.documents.forEach(doc => {
         expect(doc.niveau).toBe('L1');
         expect(doc.filiere_code).toBe('INF');
+      });
+    }
+  });
+
+  // Test 5 bis : Recherche par nom complet de la filière
+  it('devrait accepter le nom complet de la filière dans le filtre filiere', async () => {
+    const res = await request(app)
+      .get('/api/search/documents')
+      .query({ filiere: 'Informatique' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('documents');
+    if (res.body.data.documents.length > 0) {
+      res.body.data.documents.forEach(doc => {
+        expect(doc.filiere_nom).toBe('Informatique');
       });
     }
   });

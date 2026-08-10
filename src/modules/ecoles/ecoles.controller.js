@@ -62,11 +62,6 @@ const supprimerEcole = async (req, res, next) => {
     const ecole = await Ecole.findByPk(req.params.id);
     if (!ecole) return error(res, 'École introuvable.', 404);
 
-    const filieres = await Filiere.count({ where: { ecole_id: ecole.id } });
-    if (filieres > 0) {
-      return error(res, 'Impossible de supprimer cette école tant qu\'elle contient des filières.', 400);
-    }
-
     await ecole.destroy();
     return success(res, {}, 'École supprimée.');
   } catch (err) {

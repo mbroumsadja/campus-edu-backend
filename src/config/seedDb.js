@@ -39,7 +39,7 @@ const seed = async () => {
     });
 
     const [chimieFiliere] = await Filiere.findOrCreate({
-      where: { code: 'CHIM' },
+      where: { code: 'CHI' },
       defaults: { nom: 'Chimie', departement: 'Chimie', ecole_id: ecoleYaounde.id },
     });
 

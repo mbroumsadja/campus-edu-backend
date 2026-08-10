@@ -3,7 +3,7 @@
 const { Cours, UE, Utilisateur, Filiere, Telechargement } = require('../../models');
 const { Op }             = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const path               = require('path');
+const { downloadStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -107,7 +107,6 @@ const telechargerCours = async (req, res, next) => {
       return error(res, 'Cours non disponible.', 403);
     }
 
-    const filePath = path.resolve(cours.cheminFichier);
     cours.increment('telechargemements').catch(() => {});
 
     if (req.user) {
@@ -119,10 +118,10 @@ const telechargerCours = async (req, res, next) => {
       }).catch(() => {});
     }
 
-    const ext = path.extname(cours.cheminFichier) || '.pdf';
+    const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
     const fallback = `cours_${cours.id}${ext}`;
 
-    return res.download(filePath, cours.nomFichierOriginal || fallback);
+    return downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
 
   } catch (err) {
     next(err);
@@ -150,13 +149,15 @@ const creerCours = async (req, res, next) => {
       }
     }
 
+    const storedFilePath = req.file?.path || req.file?.url || null;
+
     const cours = await Cours.create({
       titre,
       description,
       type:              type || 'pdf',
       ue_id,
       enseignant_id:     req.user.id,
-      cheminFichier:     req.file.path,
+      cheminFichier:     storedFilePath,
       nomFichierOriginal: req.file.originalname,
       tailleFichier:     req.file.size,
       anneAcademique:    anneAcademique || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),

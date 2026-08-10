@@ -3,7 +3,7 @@
 const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const path        = require('path');
+const { downloadStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /sujets
@@ -90,13 +90,13 @@ const telechargerSujet = async (req, res, next) => {
       return error(res, 'Aucun corrigé disponible pour ce sujet.', 404);
     }
 
-    const filePath = path.resolve(avecCorrige ? sujet.cheminCorrige : sujet.cheminFichier);
+    const storagePath = avecCorrige ? sujet.cheminCorrige : sujet.cheminFichier;
     const fileName = avecCorrige
       ? `corrige_${sujet.titre.replace(/\s/g,'_')}.pdf`
       : `sujet_${sujet.titre.replace(/\s/g,'_')}.pdf`;
 
     sujet.increment('telechargemements').catch(() => {});
-    return res.download(filePath, fileName);
+    return downloadStoredFile(res, storagePath, fileName);
   } catch (err) {
     next(err);
   }
@@ -117,6 +117,9 @@ const creerSujet = async (req, res, next) => {
     const ue = await UE.findByPk(ue_id);
     if (!ue) return error(res, 'UE introuvable.', 404);
 
+    const storedSujetPath = fichierSujet?.path || fichierSujet?.url || null;
+    const storedCorrigePath = fichierCorrige?.path || fichierCorrige?.url || null;
+
     const sujet = await Sujet.create({
       titre,
       type,
@@ -124,9 +127,9 @@ const creerSujet = async (req, res, next) => {
       annee:         parseInt(annee),
       ue_id,
       enseignant_id: req.user.id,
-      cheminFichier: fichierSujet.path,
+      cheminFichier: storedSujetPath,
       avecCorrige:   !!fichierCorrige,
-      cheminCorrige: fichierCorrige?.path || null,
+      cheminCorrige: storedCorrigePath,
       statut:        req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
 

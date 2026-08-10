@@ -100,7 +100,7 @@ const globalLimiter = rateLimit({
 // Rate limit plus strict sur le login (anti brute-force)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      10,
+  max:      100,
   message: { success: false, message: 'Trop de tentatives de connexion. Attendez 15 minutes.' },
 });
 

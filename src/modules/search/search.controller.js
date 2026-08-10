@@ -2,7 +2,7 @@
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement } = require('../../models');
 const { Op } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
-const path = require('path');
+const { downloadStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
@@ -22,19 +22,26 @@ const rechercherDocuments = async (req, res, next) => {
   try {
     const { nom, q, niveau, filiere, filiere_id, ecole, ecole_id, type, annee } = req.query;
     const searchTerm = (nom || q || '').trim();
+    const hasFilters = Boolean(niveau || filiere || filiere_id || ecole || ecole_id || type || annee);
 
-    if (!searchTerm) {
-      return error(res, 'Le paramètre "nom" ou "q" est requis pour rechercher des documents.', 400);
+    if (!searchTerm && !hasFilters) {
+      return error(res, 'Fournissez un terme de recherche ou au moins un filtre.', 400);
     }
 
-    const searchCondition = { [Op.like]: `%${searchTerm}%` };
+    const searchCondition = searchTerm ? { [Op.like]: `%${searchTerm}%` } : undefined;
 
     const ueWhere = {};
     const filiereWhere = {};
     const ecoleWhere = {};
 
     if (niveau) ueWhere.niveau = niveau;
-    if (filiere) filiereWhere.code = filiere;
+    if (filiere) {
+      const normalizedFiliere = String(filiere).trim();
+      filiereWhere[Op.or] = [
+        { code: { [Op.like]: normalizedFiliere } },
+        { nom: { [Op.like]: normalizedFiliere } },
+      ];
+    }
     if (filiere_id) filiereWhere.id = Number(filiere_id);
     if (ecole) ecoleWhere.ecole = ecole;
     if (ecole_id) ecoleWhere.id = Number(ecole_id);
@@ -67,7 +74,14 @@ const rechercherDocuments = async (req, res, next) => {
 
     const coursWhere = {
       statut: 'publie',
-      [Op.or]: [
+    };
+
+    const sujetWhere = {
+      statut: 'publie',
+    };
+
+    if (searchCondition) {
+      coursWhere[Op.or] = [
         { titre: searchCondition },
         { nomFichierOriginal: searchCondition },
         { '$ue.intitule$': searchCondition },
@@ -75,20 +89,17 @@ const rechercherDocuments = async (req, res, next) => {
         { '$ue.filiere.code$': searchCondition },
         { '$ue.filiere.nom$': searchCondition },
         { '$ue.filiere.ecole.ecole$': searchCondition },
-      ],
-    };
+      ];
 
-    const sujetWhere = {
-      statut: 'publie',
-      [Op.or]: [
+      sujetWhere[Op.or] = [
         { titre: searchCondition },
         { '$ue.intitule$': searchCondition },
         { '$ue.code$': searchCondition },
         { '$ue.filiere.code$': searchCondition },
         { '$ue.filiere.nom$': searchCondition },
         { '$ue.filiere.ecole.ecole$': searchCondition },
-      ],
-    };
+      ];
+    }
 
     if (type) {
       coursWhere.type = type;
@@ -223,7 +234,6 @@ const telechargerDocument = async (req, res, next) => {
         return error(res, 'Cours non disponible.', 404);
       }
 
-      const filePath = path.resolve(cours.cheminFichier);
       cours.increment('telechargemements').catch(() => {});
 
       if (req.user) {
@@ -235,9 +245,8 @@ const telechargerDocument = async (req, res, next) => {
         }).catch(() => {});
       }
 
-      const ext = path.extname(cours.cheminFichier) || '.pdf';
-      const fallback = `${cours.titre.replace(/\s+/g, '_')}${ext}`;
-      return res.download(filePath, cours.nomFichierOriginal || fallback);
+      const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(cours.nomFichierOriginal || '') || '.pdf'}`;
+      return downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
     }
 
     if (type === 'sujet') {
@@ -256,13 +265,13 @@ const telechargerDocument = async (req, res, next) => {
         }
       }
 
-      const filePath = path.resolve(useCorrige ? sujet.cheminCorrige : sujet.cheminFichier);
+      const storagePath = useCorrige ? sujet.cheminCorrige : sujet.cheminFichier;
       const fileName = useCorrige
         ? `corrige_${sujet.titre.replace(/\s+/g, '_')}.pdf`
         : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
 
       sujet.increment('telechargemements').catch(() => {});
-      return res.download(filePath, fileName);
+      return downloadStoredFile(res, storagePath, fileName);
     }
 
     return error(res, 'Type invalide. Utilisez "cours" ou "sujet".', 400);
