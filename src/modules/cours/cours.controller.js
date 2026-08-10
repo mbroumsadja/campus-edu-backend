@@ -3,7 +3,7 @@
 const { Cours, UE, Utilisateur, Filiere, Telechargement } = require('../../models');
 const { Op }             = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile } = require('../../middlewares/upload');
+const { downloadStoredFile} = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -102,12 +102,10 @@ const telechargerCours = async (req, res, next) => {
       attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
     });
 
-    if (!cours)                      return error(res, 'Cours introuvable.', 404);
-    if (cours.statut !== 'publie') {
-      return error(res, 'Cours non disponible.', 403);
-    }
+    if (!cours) return error(res, 'Cours introuvable.', 404);
+    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
 
-    cours.increment('telechargemements').catch(() => {});
+    cours.increment('telechargements').catch(() => {}); // vérifie le nom exact du champ en base
 
     if (req.user) {
       Telechargement.create({
@@ -121,8 +119,7 @@ const telechargerCours = async (req, res, next) => {
     const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
     const fallback = `cours_${cours.id}${ext}`;
 
-    return downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
-
+    return await downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
   } catch (err) {
     next(err);
   }
@@ -133,15 +130,27 @@ const telechargerCours = async (req, res, next) => {
 // ──────────────────────────────────────────────────────────────────
 const creerCours = async (req, res, next) => {
   try {
-    if (!req.file) return error(res, 'Aucun fichier fourni.', 400);
+    const uploadedFiles = [];
+    if (req.file) uploadedFiles.push(req.file);
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        uploadedFiles.push(...req.files);
+      } else {
+        Object.values(req.files).forEach((fileGroup) => {
+          if (Array.isArray(fileGroup)) uploadedFiles.push(...fileGroup);
+        });
+      }
+    }
+
+    if (uploadedFiles.length === 0) {
+      return error(res, 'Aucun fichier fourni.', 400);
+    }
 
     const { titre, description, type, ue_id, anneAcademique } = req.body;
 
-    // Vérifier que l'UE existe et appartient bien à la bonne filière
     const ue = await UE.findByPk(ue_id);
     if (!ue) return error(res, 'Unité d\'enseignement introuvable.', 404);
 
-    // Un enseignant ne peut déposer que dans sa filière
     if (req.user.role === 'enseignant') {
       const enseignant = await Utilisateur.findByPk(req.user.id, { attributes: ['filiere_id'] });
       if (ue.filiere_id !== enseignant.filiere_id) {
@@ -149,21 +158,28 @@ const creerCours = async (req, res, next) => {
       }
     }
 
-    const storedFilePath = req.file?.path || req.file?.url || null;
-
     const cours = await Cours.create({
       titre,
       description,
-      type:              type || 'pdf',
+      type: type || 'pdf',
       ue_id,
-      enseignant_id:     req.user.id,
-      cheminFichier:     storedFilePath,
-      nomFichierOriginal: req.file.originalname,
-      tailleFichier:     req.file.size,
-      anneAcademique:    anneAcademique || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
-      // Admin publie directement, enseignant passe en validation
+      enseignant_id: req.user.id,
+      cheminFichier: uploadedFiles[0]?.path || uploadedFiles[0]?.url || null,
+      nomFichierOriginal: uploadedFiles[0]?.originalname,
+      tailleFichier: uploadedFiles[0]?.size,
+      anneAcademique: anneAcademique || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
       statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
+
+    if (uploadedFiles.length > 1 && typeof cours.createCoursDocuments === 'function') {
+      const documents = uploadedFiles.slice(1).map((file) => ({
+        cours_id: cours.id,
+        cheminFichier: file.path || file.url,
+        nomFichierOriginal: file.originalname,
+        tailleFichier: file.size,
+      }));
+      await cours.createCoursDocuments(documents);
+    }
 
     return created(res, cours, 'Cours déposé avec succès. En attente de validation.');
   } catch (err) {

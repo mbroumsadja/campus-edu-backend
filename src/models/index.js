@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_developpement');
+const { sequelize }  = require('../config/database_production');
 const { DataTypes }  = require('sequelize');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
@@ -222,6 +222,35 @@ const Cours = sequelize.define('Cours', {
   ],
 });
 
+const CoursDocument = sequelize.define('CoursDocument', {
+  id: {
+    type:          DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey:    true,
+  },
+  cours_id: {
+    type:      DataTypes.INTEGER,
+    allowNull: false,
+  },
+  cheminFichier: {
+    type:      DataTypes.STRING(500),
+    allowNull: false,
+    comment:   'Chemin relatif dans /uploads',
+  },
+  nomFichierOriginal: {
+    type: DataTypes.STRING(255),
+  },
+  tailleFichier: {
+    type:    DataTypes.BIGINT,
+    comment: 'Taille en octets',
+  },
+}, {
+  tableName: 'cours_documents',
+  indexes: [
+    { fields: ['cours_id'] },
+  ],
+});
+
 
 // ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Sujet d'examen
@@ -380,6 +409,9 @@ Sujet.belongsTo(UE, { foreignKey: 'ue_id', as: 'ue' });
 Utilisateur.hasMany(Cours, { foreignKey: 'enseignant_id', as: 'coursEnseignes' });
 Cours.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
 
+Cours.hasMany(CoursDocument, { foreignKey: 'cours_id', as: 'documents' });
+CoursDocument.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
+
 // Enseignant → Sujets
 Utilisateur.hasMany(Sujet, { foreignKey: 'enseignant_id', as: 'sujetsDeposes' });
 Sujet.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
@@ -396,4 +428,4 @@ Utilisateur.hasMany(AuditLog, { foreignKey: 'utilisateur_id', as: 'logs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
 
 
-module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, Sujet, Telechargement, AuditLog };
+module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog };

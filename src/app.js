@@ -8,7 +8,7 @@ const compression  = require('compression');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
-const { connectDB }      = require('./config/database_developpement');
+const { connectDB }      = require('./config/database_production');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
@@ -186,7 +186,7 @@ const start = async () => {
     logger.info(`\n${signal} reçu. Arrêt gracieux...`);
     server.close(async () => {
       logger.info('Serveur HTTP fermé.');
-      const { sequelize } = require('./config/database_developpement');
+      const { sequelize } = require('./config/database_production');
       await sequelize.close();
       logger.info('Pool de connexions fermé. Au revoir 👋');
       process.exit(0);

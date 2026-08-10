@@ -20,9 +20,21 @@ const { downloadStoredFile } = require('../../middlewares/upload');
 // ──────────────────────────────────────────────────────────────────
 const rechercherDocuments = async (req, res, next) => {
   try {
-    const { nom, q, niveau, filiere, filiere_id, ecole, ecole_id, type, annee } = req.query;
+    const {
+      nom, q,
+      niveau, semestre,
+      ue, ue_id,
+      filiere, filiere_id,
+      ecole, ecole_id,
+      type, annee,
+    } = req.query;
+
     const searchTerm = (nom || q || '').trim();
-    const hasFilters = Boolean(niveau || filiere || filiere_id || ecole || ecole_id || type || annee);
+    const hasFilters = Boolean(
+      niveau || semestre || ue || ue_id ||
+      filiere || filiere_id || ecole || ecole_id ||
+      type || annee
+    );
 
     if (!searchTerm && !hasFilters) {
       return error(res, 'Fournissez un terme de recherche ou au moins un filtre.', 400);
@@ -35,6 +47,16 @@ const rechercherDocuments = async (req, res, next) => {
     const ecoleWhere = {};
 
     if (niveau) ueWhere.niveau = niveau;
+    if (semestre) ueWhere.semestre = semestre;
+    if (ue) {
+      const normalizedUE = String(ue).trim();
+      ueWhere[Op.or] = [
+        { code: { [Op.like]: `%${normalizedUE}%` } },
+        { intitule: { [Op.like]: `%${normalizedUE}%` } },
+      ];
+    }
+    if (ue_id) ueWhere.id = Number(ue_id);
+
     if (filiere) {
       const normalizedFiliere = String(filiere).trim();
       filiereWhere[Op.or] = [
@@ -67,8 +89,11 @@ const rechercherDocuments = async (req, res, next) => {
       model: UE,
       as: 'ue',
       where: Object.keys(ueWhere).length > 0 ? ueWhere : undefined,
-      required: Boolean(niveau || filiere || filiere_id || ecole || ecole_id),
-      attributes: ['id', 'code', 'intitule', 'niveau'],
+      required: Boolean(
+        niveau || semestre || ue || ue_id ||
+        filiere || filiere_id || ecole || ecole_id
+      ),
+      attributes: ['id', 'code', 'intitule', 'niveau', 'semestre'],
       include: [includeFiliere],
     };
 
@@ -152,6 +177,7 @@ const rechercherDocuments = async (req, res, next) => {
           taille_octets: c.tailleFichier,
           taille_lisible: formatTaille(c.tailleFichier),
           niveau: c.ue.niveau,
+          semestre: c.ue.semestre,
           filiere_code: c.ue.filiere.code,
           filiere_nom: c.ue.filiere.nom,
           ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
@@ -176,6 +202,7 @@ const rechercherDocuments = async (req, res, next) => {
           taille_octets: null,
           taille_lisible: 'Non disponible',
           niveau: s.ue.niveau,
+          semestre: s.ue.semestre,
           filiere_code: s.ue.filiere.code,
           filiere_nom: s.ue.filiere.nom,
           ecole_nom: s.ue.filiere.ecole ? s.ue.filiere.ecole.ecole : null,

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const { put } = require('@vercel/blob');
+const { Readable } = require('stream');
 
 const router = express.Router();
 
@@ -36,6 +37,28 @@ const upload = multer({
   limits: { fileSize: maxSizeMB * 1024 * 1024 },
 });
 
+const uploadToVercelBlob = async (file) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const baseName = path.basename(file.originalname, ext)
+    .replace(/[^a-z0-9]/gi, '_')
+    .toLowerCase()
+    .slice(0, 50);
+  const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const blobName = `${baseName}_${unique}${ext}`;
+
+  const result = await put(blobName, file.buffer, {
+    access: process.env.BLOB_ACCESS_MODE || 'public',
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+    contentType: file.mimetype,
+    addRandomSuffix: false,
+  });
+
+  file.path = result.url;
+  file.filename = result.pathname || blobName;
+  file.storage = 'vercel-blob';
+  file.size = result.size || file.size;
+};
+
 const handleUploadError = (uploadMiddleware) => (req, res, next) => {
   uploadMiddleware(req, res, async (err) => {
     if (err instanceof multer.MulterError) {
@@ -46,27 +69,27 @@ const handleUploadError = (uploadMiddleware) => (req, res, next) => {
     }
     if (err) return res.status(400).json({ error: err.message });
 
-    if (isVercelBlobEnabled && req.file && req.file.buffer) {
+    if (isVercelBlobEnabled) {
       try {
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        const baseName = path.basename(req.file.originalname, ext)
-          .replace(/[^a-z0-9]/gi, '_')
-          .toLowerCase()
-          .slice(0, 50);
-        const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const blobName = `${baseName}_${unique}${ext}`;
+        const filesToUpload = [];
 
-        const result = await put(blobName, req.file.buffer, {
-          access: process.env.BLOB_ACCESS_MODE || 'public',
-          token: process.env.BLOB_READ_WRITE_TOKEN,
-          contentType: req.file.mimetype,
-          addRandomSuffix: false,
-        });
+        if (req.file && req.file.buffer) {
+          filesToUpload.push(req.file);
+        }
 
-        req.file.path = result.url;
-        req.file.filename = result.pathname || blobName;
-        req.file.storage = 'vercel-blob';
-        req.file.size = result.size || req.file.size;
+        if (req.files) {
+          if (Array.isArray(req.files)) {
+            filesToUpload.push(...req.files.filter(file => file && file.buffer));
+          } else {
+            Object.values(req.files).forEach((fileGroup) => {
+              if (Array.isArray(fileGroup)) {
+                filesToUpload.push(...fileGroup.filter(file => file && file.buffer));
+              }
+            });
+          }
+        }
+
+        await Promise.all(filesToUpload.map(uploadToVercelBlob));
       } catch (uploadErr) {
         return res.status(500).json({
           error: 'Échec du téléversement vers Vercel Blob.',
@@ -85,15 +108,25 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
   }
 
   if (/^https?:\/\//i.test(storagePath)) {
-    const remoteResponse = await fetch(storagePath);
-    if (!remoteResponse.ok) {
+    let remoteResponse;
+    try {
+      remoteResponse = await fetch(storagePath);
+    } catch (err) {
+      return res.status(502).json({ error: 'Impossible de joindre le stockage distant.' });
+    }
+
+    if (!remoteResponse.ok || !remoteResponse.body) {
       return res.status(502).json({ error: 'Impossible de télécharger le fichier depuis le stockage distant.' });
     }
 
     const contentType = remoteResponse.headers.get('content-type') || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName || 'document')}"`);
-    return remoteResponse.body.pipe(res);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(fileName || 'document')}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`
+    );
+
+    return Readable.fromWeb(remoteResponse.body).pipe(res);
   }
 
   return res.download(path.resolve(storagePath), fileName);
@@ -133,4 +166,19 @@ router.post(
   }
 );
 
-module.exports = { upload, handleUploadError, downloadStoredFile, uploadRouter: router };
+const { del } = require('@vercel/blob');
+
+const deleteStoredFile = async (storagePath) => {
+  if (!storagePath) return;
+
+  if (/^https?:\/\//i.test(storagePath)) {
+    // Adapte selon ton provider actif (Vercel Blob ici — remplace par l'appel B2 si c'est lui le stockage réel)
+    await del(storagePath, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+    return;
+  }
+
+  const fs = require('fs');
+  if (fs.existsSync(storagePath)) fs.unlinkSync(storagePath);
+};
+
+module.exports = { upload, handleUploadError, downloadStoredFile, deleteStoredFile, uploadRouter: router };

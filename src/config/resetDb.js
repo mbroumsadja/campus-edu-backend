@@ -28,9 +28,8 @@ const resetDB = async () => {
       return;
     }
 
-    const nomsTables = tables.map((t) => `\`${t.name}\``).join(', ');
-
     if (dialect === 'postgres') {
+      const nomsTables = tables.map((t) => `"${t.name}"`).join(', ');
       await sequelize.query(`TRUNCATE ${nomsTables} RESTART IDENTITY CASCADE;`);
     } else {
       await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
