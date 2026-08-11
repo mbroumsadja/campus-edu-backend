@@ -23,12 +23,11 @@ router.get('/:id',
   validate,
   controller.getCours
 );
-
 // Télécharger un cours (gratuit, accessible publiquement sans compte)
 router.get('/:coursId/documents/:documentId/telecharger', 
   optionalAuth, 
   downloadLimiter, 
-  controller.telechargerCours
+  controller.telechargerDocument
 );
 
 // Créer un cours (enseignant ou admin)
