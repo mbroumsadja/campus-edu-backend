@@ -4,6 +4,9 @@
 const { Sequelize } = require('sequelize');
 const logger        = require('../utils/logger');
 
+require('pg');
+require('pg-hstore');
+
 const sequelize = new Sequelize(process.env.DB_URL,
   {
     dialect: 'postgres',
