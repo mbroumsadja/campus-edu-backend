@@ -37,31 +37,24 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
 ];
 
-const isLocalOrigin = (origin) => {
-  return /^(http:\/\/(localhost|127\.0\.0\.1):\d+)$/.test(origin);
+// Autorise toutes les URLs Vercel de TON projet (prod + previews)
+const isVercelPreview = (origin) => {
+  return /^https:\/\/campus-edu-admin(-[a-z0-9]+)*(-tonusername)?\.vercel\.app$/.test(origin);
 };
 
 app.use(cors({
   origin: (origin, callback) => {
     const normalizedOrigin = origin ? origin.trim() : origin;
 
-    // Autoriser les requêtes sans origin (Postman, curl) en dev
-    if (!normalizedOrigin) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(normalizedOrigin)) {
-      return callback(null, true);
-    }
-
-    if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalizedOrigin)) {
-      return callback(null, true);
-    }
+    if (!normalizedOrigin) return callback(null, true);
+    if (allowedOrigins.includes(normalizedOrigin)) return callback(null, true);
+    if (isVercelPreview(normalizedOrigin)) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalizedOrigin)) return callback(null, true);
 
     callback(new Error(`CORS bloqué pour l'origine : ${normalizedOrigin}`));
   },
   credentials: true,
-  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['content-Disposition']
 }));
