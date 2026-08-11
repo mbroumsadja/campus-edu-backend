@@ -142,14 +142,14 @@ const rechercherDocuments = async (req, res, next) => {
     const cours = await Cours.findAll({
       where: coursWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal', 'anneAcademique', 'telechargemements'],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal', 'anneAcademique', 'telechargements'],
       order: [['createdAt', 'DESC']],
     });
 
     const sujets = await Sujet.findAll({
       where: sujetWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargemements'],
+      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargements'],
       order: [['annee', 'DESC']],
     });
 
@@ -172,7 +172,7 @@ const rechercherDocuments = async (req, res, next) => {
           type: c.type,
           disponible: true,
           deja_telecharge: downloadedCourseIds.has(c.id),
-          telechargements: c.telechargemements,
+          telechargements: c.telechargements,
           lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}`,
           taille_octets: c.tailleFichier,
           taille_lisible: formatTaille(c.tailleFichier),
@@ -197,7 +197,7 @@ const rechercherDocuments = async (req, res, next) => {
           type: s.type,
           disponible: true,
           deja_telecharge: false,
-          telechargements: s.telechargemements,
+          telechargements: s.telechargements,
           lien_telechargement: `/api/search/documents/telecharger?type=sujet&id=${s.id}`,
           taille_octets: null,
           taille_lisible: 'Non disponible',
@@ -261,7 +261,7 @@ const telechargerDocument = async (req, res, next) => {
         return error(res, 'Cours non disponible.', 404);
       }
 
-      cours.increment('telechargemements').catch(() => {});
+      cours.increment('telechargements').catch(() => {});
 
       if (req.user) {
         Telechargement.create({
@@ -297,7 +297,7 @@ const telechargerDocument = async (req, res, next) => {
         ? `corrige_${sujet.titre.replace(/\s+/g, '_')}.pdf`
         : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
 
-      sujet.increment('telechargemements').catch(() => {});
+      sujet.increment('telechargements').catch(() => {});
       return downloadStoredFile(res, storagePath, fileName);
     }
 

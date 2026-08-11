@@ -4,12 +4,12 @@ const controller = require('./ecoles.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
 const { validate } = require('../../middlewares/validate');
 
-router.use(verifyToken);
-
+// Lecture publique — pas de vérification de token
 router.get('/', controller.listerEcoles);
 router.get('/:id', controller.getEcole);
 
 router.post('/',
+  verifyToken,
   authorize('admin'),
   [
     body('ecole').trim().notEmpty().withMessage('Nom de l\'école obligatoire'),
@@ -19,6 +19,7 @@ router.post('/',
 );
 
 router.put('/:id',
+  verifyToken,
   authorize('admin'),
   [
     body('ecole').trim().notEmpty().withMessage('Nom de l\'école obligatoire'),
@@ -27,6 +28,6 @@ router.put('/:id',
   controller.modifierEcole
 );
 
-router.delete('/:id', authorize('admin'), controller.supprimerEcole);
+router.delete('/:id', verifyToken, authorize('admin'), controller.supprimerEcole);
 
 module.exports = router;

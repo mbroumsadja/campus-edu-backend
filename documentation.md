@@ -50,12 +50,12 @@ L'application se connecte à une base de données PostgreSQL via Sequelize et ut
 - `id`, `code`, `intitule`, `niveau`, `semestre`, `credits`, `actif`, `filiere_id`
 
 ### Cours
-- `id`, `titre`, `description`, `type`, `cheminFichier`, `nomFichierOriginal`, `tailleFichier`, `statut`, `anneAcademique`, `vues`, `telechargemements`, `ue_id`, `enseignant_id`
+- `id`, `titre`, `description`, `type`, `cheminFichier`, `nomFichierOriginal`, `tailleFichier`, `statut`, `anneAcademique`, `vues`, `telechargements`, `ue_id`, `enseignant_id`
 - types : `pdf`, `video`, `slide`, `autre`
 - statuts : `en_attente`, `publie`, `archive`
 
 ### Sujet
-- `id`, `titre`, `type`, `session`, `annee`, `cheminFichier`, `avecCorrige`, `cheminCorrige`, `statut`, `telechargemements`, `ue_id`, `enseignant_id`
+- `id`, `titre`, `type`, `session`, `annee`, `cheminFichier`, `avecCorrige`, `cheminCorrige`, `statut`, `telechargements`, `ue_id`, `enseignant_id`
 - types : `partiel`, `rattrapage`, `terminal`, `tp`, `td`
 - session : `normale`, `rattrapage`
 - statuts : `en_attente`, `publie`, `archive`

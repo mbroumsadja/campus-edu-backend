@@ -208,7 +208,7 @@ const Cours = sequelize.define('Cours', {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
-  telechargemements: {
+  telechargements: {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
@@ -292,7 +292,7 @@ const Sujet = sequelize.define('Sujet', {
     type:         DataTypes.ENUM('en_attente', 'publie', 'archive'),
     defaultValue: 'en_attente',
   },
-  telechargemements: {
+  telechargements: {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },

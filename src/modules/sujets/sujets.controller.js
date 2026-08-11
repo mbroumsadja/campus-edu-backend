@@ -95,7 +95,7 @@ const telechargerSujet = async (req, res, next) => {
       ? `corrige_${sujet.titre.replace(/\s/g,'_')}.pdf`
       : `sujet_${sujet.titre.replace(/\s/g,'_')}.pdf`;
 
-    sujet.increment('telechargemements').catch(() => {});
+    sujet.increment('telechargements').catch(() => {});
     return downloadStoredFile(res, storagePath, fileName);
   } catch (err) {
     next(err);

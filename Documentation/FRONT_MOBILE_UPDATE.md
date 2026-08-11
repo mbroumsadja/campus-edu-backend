@@ -64,5 +64,5 @@ Ce document récapitule les nouvelles évolutions apportées au backend pour sup
 
 ## Notes techniques
 - Le backend a maintenant un modèle `Telechargement` (`telechargements`) qui conserve l’historique des téléchargements de cours par utilisateur.
-- Le compteur de téléchargements reste basé sur le champ `Cours.telechargemements`.
+- Le compteur de téléchargements reste basé sur le champ `Cours.telechargements`.
 - Les téléchargements sont enregistrés lorsque l’utilisateur authentifié appelle le même endpoint de téléchargement.

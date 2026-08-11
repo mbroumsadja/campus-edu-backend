@@ -5,15 +5,14 @@ const controller = require('./filieres.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
 const { validate } = require('../../middlewares/validate');
 
-router.use(verifyToken);
-
-// Routes accessibles à tous les utilisateurs connectés
+// Lecture publique — pas de vérification de token
 router.get('/',     controller.listerFilieres);
 router.get('/:id',  controller.getFiliere);
 router.get('/:id/ues', controller.listerUEs);
 
 // Routes admin uniquement
 router.post('/',
+  verifyToken,
   authorize('admin'),
   [
     body('code').trim().notEmpty().withMessage('Code obligatoire'),
@@ -25,6 +24,7 @@ router.post('/',
 );
 
 router.put('/:id',
+  verifyToken,
   authorize('admin'),
   [
     body('ecole_id').optional().isInt().withMessage('Ecole invalide'),
@@ -35,6 +35,7 @@ router.put('/:id',
 
 // Créer une UE dans une filière
 router.post('/:id/ues',
+  verifyToken,
   authorize('admin'),
   [
     body('code').trim().notEmpty(),

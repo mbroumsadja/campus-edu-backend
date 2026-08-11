@@ -8,14 +8,17 @@ const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/uplo
 // ──────────────────────────────────────────────────────────────────
 //  Helper : fusionne le fichier principal du cours + les documents
 //  additionnels (table CoursDocument) en un tableau unique 'fichiers'
-//  Le fichier principal reprend l'id du cours (documentId === coursId
-//  côté téléchargement pour le distinguer des documents additionnels).
+//  Le fichier principal utilise l'id sentinelle 0 (jamais pris par un
+//  vrai cours ni un vrai CoursDocument, AUTO_INCREMENT démarrant à 1)
+//  pour le distinguer sans ambiguïté des documents additionnels côté
+//  téléchargement — réutiliser cours.id créait des collisions avec
+//  des CoursDocument.id d'autres cours.
 // ──────────────────────────────────────────────────────────────────
 const withFichiers = (coursInstance) => {
   const plain = coursInstance.toJSON();
   const fichiers = [
     {
-      id: plain.id,
+      id: 0,
       nomFichierOriginal: plain.nomFichierOriginal,
       tailleFichier: plain.tailleFichier,
     },
@@ -80,7 +83,7 @@ const listerCours = async (req, res, next) => {
         },
       ],
       attributes: { exclude: ['cheminFichier'] }, // Ne pas exposer le chemin réel
-      order:  [['createdAt', 'DESC']],
+      order:  [['createdAt', 'DESC'], [{ model: CoursDocument, as: 'documents' }, 'id', 'ASC']],
       limit:  parseInt(limit),
       offset: parseInt(offset),
       distinct: true, // Nécessaire avec findAndCountAll + include
@@ -106,6 +109,7 @@ const getCours = async (req, res, next) => {
         { model: CoursDocument, as: 'documents', attributes: ['id', 'nomFichierOriginal', 'tailleFichier'] },
       ],
       attributes: { exclude: ['cheminFichier'] },
+      order: [[{ model: CoursDocument, as: 'documents' }, 'id', 'ASC']],
     });
 
     if (!cours) return error(res, 'Cours introuvable.', 404);
@@ -124,8 +128,8 @@ const getCours = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours/:coursId/documents/:documentId/telecharger
-//  documentId === coursId → fichier principal du cours
-//  documentId != coursId  → document additionnel (table CoursDocument)
+//  documentId === '0' → fichier principal du cours
+//  documentId != '0'   → document additionnel (table CoursDocument)
 //  Renvoie le fichier avec un nom propre + incrémente compteur
 // ──────────────────────────────────────────────────────────────────
 const telechargerDocument = async (req, res, next) => {
@@ -143,7 +147,8 @@ const telechargerDocument = async (req, res, next) => {
 
     let cheminFichier, nomFichier;
 
-    if (String(cours.id) === String(documentId)) {
+    // documentId === '0' → fichier principal du cours (voir withFichiers)
+    if (String(documentId) === '0') {
       // Téléchargement du fichier principal du cours
       cheminFichier = cours.cheminFichier;
       nomFichier    = cours.nomFichierOriginal;
