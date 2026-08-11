@@ -1,9 +1,9 @@
 // src/modules/cours/cours.controller.js
 
-const { Cours, UE, Utilisateur, Filiere, Telechargement } = require('../../models');
-const { Op }             = require('sequelize');
+const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
+const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile} = require('../../middlewares/upload');
+const { downloadStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -18,19 +18,19 @@ const listerCours = async (req, res, next) => {
     // Construire le WHERE selon le rôle
     const where = { statut: 'publie' };
 
-    if (ue_id)  where.ue_id = ue_id;
-    if (type)   where.type  = type;
-    if (annee)  where.anneAcademique = annee;
+    if (ue_id) where.ue_id = ue_id;
+    if (type) where.type = type;
+    if (annee) where.anneAcademique = annee;
     if (search) where.titre = { [Op.like]: `%${search}%` };
 
     // Pour un étudiant : restreindre aux cours de sa filière/niveau
     const includeUE = {
-      model:      UE,
-      as:         'ue',
+      model: UE,
+      as: 'ue',
       attributes: ['id', 'code', 'intitule', 'niveau', 'semestre'],
       include: [{
-        model:      Filiere,
-        as:         'filiere',
+        model: Filiere,
+        as: 'filiere',
         attributes: ['id', 'nom', 'code'],
       }],
     };
@@ -38,7 +38,7 @@ const listerCours = async (req, res, next) => {
     if (req.user.role === 'etudiant') {
       includeUE.where = {
         filiere_id: req.user.filiere_id,
-        niveau:     req.user.niveau,
+        niveau: req.user.niveau,
       };
     }
 
@@ -47,14 +47,19 @@ const listerCours = async (req, res, next) => {
       include: [
         includeUE,
         {
-          model:      Utilisateur,
-          as:         'enseignant',
+          model: Utilisateur,
+          as: 'enseignant',
           attributes: ['id', 'nom', 'prenom', 'matricule'],
         },
+        {
+          model: CoursDocument,
+          as: 'fichiers',
+          attributes: ['id', 'nomFichierOriginal', 'tailleFichier'],
+        }
       ],
       attributes: { exclude: ['cheminFichier'] }, // Ne pas exposer le chemin réel
-      order:  [['createdAt', 'DESC']],
-      limit:  parseInt(limit),
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true, // Nécessaire avec findAndCountAll + include
     });
@@ -74,9 +79,10 @@ const getCours = async (req, res, next) => {
       include: [
         { model: UE, as: 'ue', include: [{ model: Filiere, as: 'filiere' }] },
         { model: Utilisateur, as: 'enseignant', attributes: ['id', 'nom', 'prenom'] },
+        { model: CoursDocument, as: 'fichiers', attributes: ['id', 'nomFichierOriginal', 'tailleFichier'] }
       ],
       attributes: { exclude: ['cheminFichier'] },
-});
+    });
 
     if (!cours) return error(res, 'Cours introuvable.', 404);
     if (cours.statut !== 'publie' && req.user.role === 'etudiant') {
@@ -84,7 +90,7 @@ const getCours = async (req, res, next) => {
     }
 
     // Incrémenter le compteur de vues (sans bloquer la réponse)
-    cours.increment('vues').catch(() => {});
+    cours.increment('vues').catch(() => { });
 
     return success(res, cours);
   } catch (err) {
@@ -105,7 +111,7 @@ const telechargerCours = async (req, res, next) => {
     if (!cours) return error(res, 'Cours introuvable.', 404);
     if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
 
-    cours.increment('telechargements').catch(() => {}); // vérifie le nom exact du champ en base
+    cours.increment('telechargemments').catch(() => { }); // vérifie le nom exact du champ en base
 
     if (req.user) {
       Telechargement.create({
@@ -113,7 +119,7 @@ const telechargerCours = async (req, res, next) => {
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
@@ -171,15 +177,13 @@ const creerCours = async (req, res, next) => {
       statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
 
-    if (uploadedFiles.length > 1 && typeof cours.createCoursDocuments === 'function') {
-      const documents = uploadedFiles.slice(1).map((file) => ({
-        cours_id: cours.id,
-        cheminFichier: file.path || file.url,
-        nomFichierOriginal: file.originalname,
-        tailleFichier: file.size,
-      }));
-      await cours.createCoursDocuments(documents);
-    }
+const documents = uploadedFiles.map((file) => ({
+      cours_id: cours.id,
+      cheminFichier: file.path || file.url,
+      nomFichierOriginal: file.originalname,
+      tailleFichier: file.size,
+    }));
+    await CoursDocument.bulkCreate(documents);
 
     return created(res, cours, 'Cours déposé avec succès. En attente de validation.');
   } catch (err) {
@@ -222,4 +226,35 @@ const supprimerCours = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerCours, creerCours, changerStatut, supprimerCours };
+const telechargerDocument = async (req, res, next) => {
+  try {
+    const { coursId, documentId } = req.params;
+
+    const cours = await Cours.findByPk(coursId, { attributes: ['id', 'statut'] });
+    if (!cours) return error(res, 'Cours introuvable.', 404);
+    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
+
+    const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: coursId } });
+    if (!document) return error(res, 'Document introuvable.', 404);
+
+    cours.increment('telechargemements').catch(() => { });
+
+    if (req.user) {
+      Telechargement.create({
+        utilisateur_id: req.user.id,
+        cours_id: cours.id,
+        ipAddress: req.ip || req.connection?.remoteAddress || null,
+        userAgent: req.get('User-Agent'),
+      }).catch(() => { });
+    }
+
+    const ext = (document.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
+    const fallback = `cours_${cours.id}_doc_${document.id}${ext}`;
+
+    return await downloadStoredFile(res, document.cheminFichier, document.nomFichierOriginal || fallback);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { listerCours, getCours, telechargerCours, telechargerDocument, creerCours, changerStatut, supprimerCours };

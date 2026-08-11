@@ -2,9 +2,46 @@
 require('dotenv').config();
 const { sequelize } = require('./database');
 const logger = require('../utils/logger');
+const { deleteStoredFile } = require('../middlewares/upload');
+const { Cours, CoursDocument, Sujet } = require('../models');
+
+// ─────────────────────────────────────────────────────────────────
+// Supprime tous les fichiers physiques (Vercel Blob / disque local)
+// référencés en base, AVANT de vider les tables.
+// ─────────────────────────────────────────────────────────────────
+const supprimerFichiersStockes = async () => {
+  const chemins = [];
+
+  const cours = await Cours.findAll({ attributes: ['cheminFichier'] });
+  chemins.push(...cours.map((c) => c.cheminFichier));
+
+  const documents = await CoursDocument.findAll({ attributes: ['cheminFichier'] });
+  chemins.push(...documents.map((d) => d.cheminFichier));
+
+  const sujets = await Sujet.findAll({ attributes: ['cheminFichier', 'cheminCorrige'] });
+  sujets.forEach((s) => {
+    chemins.push(s.cheminFichier);
+    if (s.cheminCorrige) chemins.push(s.cheminCorrige);
+  });
+
+  const uniques = [...new Set(chemins.filter(Boolean))];
+
+  logger.info(`🗑️  Suppression de ${uniques.length} fichier(s) stocké(s)...`);
+
+  const resultats = await Promise.allSettled(
+    uniques.map((chemin) => deleteStoredFile(chemin))
+  );
+
+  const echecs = resultats.filter((r) => r.status === 'rejected').length;
+  if (echecs > 0) {
+    logger.warn(`⚠️  ${echecs} fichier(s) n'ont pas pu être supprimés (déjà absents ou erreur réseau).`);
+  }
+};
 
 const resetDB = async () => {
   try {
+    await supprimerFichiersStockes();
+
     const dialect = sequelize.getDialect();
     let tables = [];
 

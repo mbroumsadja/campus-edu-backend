@@ -409,7 +409,7 @@ Sujet.belongsTo(UE, { foreignKey: 'ue_id', as: 'ue' });
 Utilisateur.hasMany(Cours, { foreignKey: 'enseignant_id', as: 'coursEnseignes' });
 Cours.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
 
-Cours.hasMany(CoursDocument, { foreignKey: 'cours_id', as: 'documents' });
+Cours.hasMany(CoursDocument, { foreignKey: 'cours_id', as: 'fichiers' });
 CoursDocument.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
 
 // Enseignant → Sujets
