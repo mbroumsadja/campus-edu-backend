@@ -1,7 +1,7 @@
 // src/modules/cours/cours.controller.js
 
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
-const { Op }             = require('sequelize');
+const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 
@@ -43,19 +43,19 @@ const listerCours = async (req, res, next) => {
     // Construire le WHERE selon le rôle
     const where = { statut: 'publie' };
 
-    if (ue_id)  where.ue_id = ue_id;
-    if (type)   where.type  = type;
-    if (annee)  where.anneAcademique = annee;
+    if (ue_id) where.ue_id = ue_id;
+    if (type) where.type = type;
+    if (annee) where.anneAcademique = annee;
     if (search) where.titre = { [Op.like]: `%${search}%` };
 
     // Pour un étudiant : restreindre aux cours de sa filière/niveau
     const includeUE = {
-      model:      UE,
-      as:         'ue',
+      model: UE,
+      as: 'ue',
       attributes: ['id', 'code', 'intitule', 'niveau', 'semestre'],
       include: [{
-        model:      Filiere,
-        as:         'filiere',
+        model: Filiere,
+        as: 'filiere',
         attributes: ['id', 'nom', 'code'],
       }],
     };
@@ -63,7 +63,7 @@ const listerCours = async (req, res, next) => {
     if (req.user.role === 'etudiant') {
       includeUE.where = {
         filiere_id: req.user.filiere_id,
-        niveau:     req.user.niveau,
+        niveau: req.user.niveau,
       };
     }
 
@@ -72,19 +72,19 @@ const listerCours = async (req, res, next) => {
       include: [
         includeUE,
         {
-          model:      Utilisateur,
-          as:         'enseignant',
+          model: Utilisateur,
+          as: 'enseignant',
           attributes: ['id', 'nom', 'prenom', 'matricule'],
         },
         {
-          model:      CoursDocument,
-          as:         'documents', // ⚠️ alias réel défini dans models/index.js
-          attributes: ['id', 'nomFichierOriginal', 'tailleFichier'],
+          model: CoursDocument,
+          as: 'documents',
+          attributes: ['id', 'nomFichierOriginal', 'tailleFichier', 'ordre'],
         },
       ],
       attributes: { exclude: ['cheminFichier'] }, // Ne pas exposer le chemin réel
-      order:  [['createdAt', 'DESC'], [{ model: CoursDocument, as: 'documents' }, 'id', 'ASC']],
-      limit:  parseInt(limit),
+      order: [['createdAt', 'DESC'], [{ model: CoursDocument, as: 'documents' }, 'ordre', 'ASC']],
+      limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true, // Nécessaire avec findAndCountAll + include
     });
@@ -108,8 +108,8 @@ const getCours = async (req, res, next) => {
         { model: Utilisateur, as: 'enseignant', attributes: ['id', 'nom', 'prenom'] },
         { model: CoursDocument, as: 'documents', attributes: ['id', 'nomFichierOriginal', 'tailleFichier'] },
       ],
-      attributes: { exclude: ['cheminFichier'] },
-      order: [[{ model: CoursDocument, as: 'documents' }, 'id', 'ASC']],
+      attributes: { exclude: ['cheminFichier','ordre'] },
+      order: [[{ model: CoursDocument, as: 'documents' }, 'ordre', 'ASC']],
     });
 
     if (!cours) return error(res, 'Cours introuvable.', 404);
@@ -118,7 +118,7 @@ const getCours = async (req, res, next) => {
     }
 
     // Incrémenter le compteur de vues (sans bloquer la réponse)
-    cours.increment('vues').catch(() => {});
+    cours.increment('vues').catch(() => { });
 
     return success(res, withFichiers(cours));
   } catch (err) {
@@ -151,7 +151,7 @@ const telechargerDocument = async (req, res, next) => {
     if (String(documentId) === '0') {
       // Téléchargement du fichier principal du cours
       cheminFichier = cours.cheminFichier;
-      nomFichier    = cours.nomFichierOriginal;
+      nomFichier = cours.nomFichierOriginal;
     } else {
       // Téléchargement d'un document additionnel
       const doc = await CoursDocument.findOne({
@@ -160,11 +160,11 @@ const telechargerDocument = async (req, res, next) => {
       });
       if (!doc) return error(res, 'Document introuvable.', 404);
       cheminFichier = doc.cheminFichier;
-      nomFichier    = doc.nomFichierOriginal;
+      nomFichier = doc.nomFichierOriginal;
     }
 
     // Nom exact du champ en base : 'telechargemements' (voir models/index.js)
-    cours.increment('telechargemements').catch(() => {});
+    cours.increment('telechargements').catch(() => { });
 
     if (req.user) {
       Telechargement.create({
@@ -172,7 +172,7 @@ const telechargerDocument = async (req, res, next) => {
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const ext = (nomFichier || '').includes('.') ? '' : '.pdf';
@@ -235,12 +235,15 @@ const creerCours = async (req, res, next) => {
 
     // Fichiers additionnels (2e, 3e, ...) → table CoursDocument
     if (uploadedFiles.length > 1) {
-      const documents = uploadedFiles.slice(1).map((file) => ({
+      // localiser le bloc qui construit "documents" pour bulkCreate
+      const documents = fichiersAdditionnels.map((f, index) => ({
         cours_id: cours.id,
-        cheminFichier: file.path || file.url,
-        nomFichierOriginal: file.originalname,
-        tailleFichier: file.size,
+        ordre: index,        // ← ajouter cette ligne
+        cheminFichier: f.cheminFichier,
+        nomFichierOriginal: f.originalname,
+        tailleFichier: f.size,
       }));
+      await CoursDocument.bulkCreate(documents);
       await CoursDocument.bulkCreate(documents);
     }
 

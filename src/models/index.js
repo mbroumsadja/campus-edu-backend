@@ -243,6 +243,10 @@ const CoursDocument = sequelize.define('CoursDocument', {
     type:    DataTypes.BIGINT,
     comment: 'Taille en octets',
   },
+  telechargemements: {
+    type:         DataTypes.INTEGER,
+    defaultValue: 0,
+  }
 }, {
   tableName: 'cours_documents',
   indexes: [
@@ -292,7 +296,7 @@ const Sujet = sequelize.define('Sujet', {
     type:         DataTypes.ENUM('en_attente', 'publie', 'archive'),
     defaultValue: 'en_attente',
   },
-  telechargements: {
+  telechargemements: {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
