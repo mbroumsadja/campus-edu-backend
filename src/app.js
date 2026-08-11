@@ -34,8 +34,7 @@ app.use(helmet({
 
 // 2. CORS — origines autorisées uniquement
 const allowedOrigins = [
-  (process.env.FRONTEND_URL || 'http://localhost:3001').trim(),
-  'http://127.0.0.1:3001',
+  (process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
 ];
 
 const isLocalOrigin = (origin) => {
