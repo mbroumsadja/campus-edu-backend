@@ -86,10 +86,10 @@ Ce document décrit comment l'API répond aux requêtes et comment elle fonction
 - `id`, `code`, `intitule`, `niveau`, `semestre`, `credits`, `actif`, `filiere_id`
 
 ### Cours
-- `id`, `titre`, `description`, `type`, `cheminFichier`, `nomFichierOriginal`, `tailleFichier`, `statut`, `anneAcademique`, `vues`, `telechargemements`, `ue_id`, `enseignant_id`
+- `id`, `titre`, `description`, `type`, `cheminFichier`, `nomFichierOriginal`, `tailleFichier`, `statut`, `anneAcademique`, `vues`, `telechargements`, `ue_id`, `enseignant_id`
 
 ### Sujet
-- `id`, `titre`, `type`, `session`, `annee`, `cheminFichier`, `avecCorrige`, `cheminCorrige`, `statut`, `telechargemements`, `ue_id`, `enseignant_id`
+- `id`, `titre`, `type`, `session`, `annee`, `cheminFichier`, `avecCorrige`, `cheminCorrige`, `statut`, `telechargements`, `ue_id`, `enseignant_id`
 
 ## Comportement des endpoints principaux
 

@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_production');
+const { sequelize }  = require('../config/database_developpement');
 const { DataTypes }  = require('sequelize');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
@@ -119,7 +119,6 @@ const Utilisateur = sequelize.define('Utilisateur', {
   ],
 });
 
-
 // ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Unité d'Enseignement (UE / Matière)
 // ══════════════════════════════════════════════════════════════════
@@ -209,7 +208,7 @@ const Cours = sequelize.define('Cours', {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
-  telechargemements: {
+  telechargements: {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
@@ -244,6 +243,10 @@ const CoursDocument = sequelize.define('CoursDocument', {
     type:    DataTypes.BIGINT,
     comment: 'Taille en octets',
   },
+  telechargemements: {
+    type:         DataTypes.INTEGER,
+    defaultValue: 0,
+  }
 }, {
   tableName: 'cours_documents',
   indexes: [

@@ -25,17 +25,17 @@ router.get('/:id',
 );
 
 // Télécharger un cours (gratuit, accessible publiquement sans compte)
-router.get('/:id/telecharger', 
+router.get('/:coursId/documents/:documentId/telecharger', 
   optionalAuth, 
   downloadLimiter, 
-  controller.telechargerCours
+  controller.telechargerDocument
 );
 
 // Créer un cours (enseignant ou admin)
 router.post('/',
   authorize('enseignant', 'admin'),
   setFolder('cours'),
-  handleUploadError(upload.single('fichier')),
+  handleUploadError(upload.array('fichiers', 10)),   // ✅ multi-fichiers, max 10
   [
     body('titre').trim().notEmpty().withMessage('Le titre est obligatoire'),
     body('ue_id').isInt().withMessage('UE invalide'),

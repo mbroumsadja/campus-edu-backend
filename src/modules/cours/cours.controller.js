@@ -1,9 +1,34 @@
 // src/modules/cours/cours.controller.js
 
-const { Cours, UE, Utilisateur, Filiere, Telechargement } = require('../../models');
-const { Op }             = require('sequelize');
+const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
+const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile} = require('../../middlewares/upload');
+const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+
+// ──────────────────────────────────────────────────────────────────
+//  Helper : fusionne le fichier principal du cours + les documents
+//  additionnels (table CoursDocument) en un tableau unique 'fichiers'
+//  Le fichier principal utilise l'id sentinelle 0 (jamais pris par un
+//  vrai cours ni un vrai CoursDocument, AUTO_INCREMENT démarrant à 1)
+//  pour le distinguer sans ambiguïté des documents additionnels côté
+//  téléchargement — réutiliser cours.id créait des collisions avec
+//  des CoursDocument.id d'autres cours.
+// ──────────────────────────────────────────────────────────────────
+const withFichiers = (coursInstance) => {
+  const plain = coursInstance.toJSON();
+  const fichiers = [
+    {
+      id: 0,
+      nomFichierOriginal: plain.nomFichierOriginal,
+      tailleFichier: plain.tailleFichier,
+    },
+    ...(plain.documents || []),
+  ];
+  delete plain.documents;
+  delete plain.nomFichierOriginal;
+  delete plain.tailleFichier;
+  return { ...plain, fichiers };
+};
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -18,19 +43,19 @@ const listerCours = async (req, res, next) => {
     // Construire le WHERE selon le rôle
     const where = { statut: 'publie' };
 
-    if (ue_id)  where.ue_id = ue_id;
-    if (type)   where.type  = type;
-    if (annee)  where.anneAcademique = annee;
+    if (ue_id) where.ue_id = ue_id;
+    if (type) where.type = type;
+    if (annee) where.anneAcademique = annee;
     if (search) where.titre = { [Op.like]: `%${search}%` };
 
     // Pour un étudiant : restreindre aux cours de sa filière/niveau
     const includeUE = {
-      model:      UE,
-      as:         'ue',
+      model: UE,
+      as: 'ue',
       attributes: ['id', 'code', 'intitule', 'niveau', 'semestre'],
       include: [{
-        model:      Filiere,
-        as:         'filiere',
+        model: Filiere,
+        as: 'filiere',
         attributes: ['id', 'nom', 'code'],
       }],
     };
@@ -38,7 +63,7 @@ const listerCours = async (req, res, next) => {
     if (req.user.role === 'etudiant') {
       includeUE.where = {
         filiere_id: req.user.filiere_id,
-        niveau:     req.user.niveau,
+        niveau: req.user.niveau,
       };
     }
 
@@ -47,19 +72,26 @@ const listerCours = async (req, res, next) => {
       include: [
         includeUE,
         {
-          model:      Utilisateur,
-          as:         'enseignant',
+          model: Utilisateur,
+          as: 'enseignant',
           attributes: ['id', 'nom', 'prenom', 'matricule'],
+        },
+        {
+          model: CoursDocument,
+          as: 'documents',
+          attributes: ['id', 'nomFichierOriginal', 'tailleFichier', 'ordre'],
         },
       ],
       attributes: { exclude: ['cheminFichier'] }, // Ne pas exposer le chemin réel
-      order:  [['createdAt', 'DESC']],
-      limit:  parseInt(limit),
+      order: [['createdAt', 'DESC'], [{ model: CoursDocument, as: 'documents' }, 'ordre', 'ASC']],
+      limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true, // Nécessaire avec findAndCountAll + include
     });
 
-    return paginated(res, rows, count, page, limit);
+    const data = rows.map(withFichiers);
+
+    return paginated(res, data, count, page, limit);
   } catch (err) {
     next(err);
   }
@@ -74,9 +106,11 @@ const getCours = async (req, res, next) => {
       include: [
         { model: UE, as: 'ue', include: [{ model: Filiere, as: 'filiere' }] },
         { model: Utilisateur, as: 'enseignant', attributes: ['id', 'nom', 'prenom'] },
+        { model: CoursDocument, as: 'documents', attributes: ['id', 'nomFichierOriginal', 'tailleFichier'] },
       ],
-      attributes: { exclude: ['cheminFichier'] },
-});
+      attributes: { exclude: ['cheminFichier','ordre'] },
+      order: [[{ model: CoursDocument, as: 'documents' }, 'ordre', 'ASC']],
+    });
 
     if (!cours) return error(res, 'Cours introuvable.', 404);
     if (cours.statut !== 'publie' && req.user.role === 'etudiant') {
@@ -84,28 +118,53 @@ const getCours = async (req, res, next) => {
     }
 
     // Incrémenter le compteur de vues (sans bloquer la réponse)
-    cours.increment('vues').catch(() => {});
+    cours.increment('vues').catch(() => { });
 
-    return success(res, cours);
+    return success(res, withFichiers(cours));
   } catch (err) {
     next(err);
   }
 };
 
 // ──────────────────────────────────────────────────────────────────
-//  GET /cours/:id/telecharger
+//  GET /cours/:coursId/documents/:documentId/telecharger
+//  documentId === '0' → fichier principal du cours
+//  documentId != '0'   → document additionnel (table CoursDocument)
 //  Renvoie le fichier avec un nom propre + incrémente compteur
 // ──────────────────────────────────────────────────────────────────
-const telechargerCours = async (req, res, next) => {
+const telechargerDocument = async (req, res, next) => {
   try {
-    const cours = await Cours.findByPk(req.params.id, {
+    const { coursId, documentId } = req.params;
+
+    const cours = await Cours.findByPk(coursId, {
       attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
     });
 
     if (!cours) return error(res, 'Cours introuvable.', 404);
-    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
+    if (cours.statut !== 'publie' && req.user?.role === 'etudiant') {
+      return error(res, 'Cours non disponible.', 403);
+    }
 
-    cours.increment('telechargements').catch(() => {}); // vérifie le nom exact du champ en base
+    let cheminFichier, nomFichier;
+
+    // documentId === '0' → fichier principal du cours (voir withFichiers)
+    if (String(documentId) === '0') {
+      // Téléchargement du fichier principal du cours
+      cheminFichier = cours.cheminFichier;
+      nomFichier = cours.nomFichierOriginal;
+    } else {
+      // Téléchargement d'un document additionnel
+      const doc = await CoursDocument.findOne({
+        where: { id: documentId, cours_id: coursId },
+        attributes: ['cheminFichier', 'nomFichierOriginal'],
+      });
+      if (!doc) return error(res, 'Document introuvable.', 404);
+      cheminFichier = doc.cheminFichier;
+      nomFichier = doc.nomFichierOriginal;
+    }
+
+    // Nom exact du champ en base : 'telechargemements' (voir models/index.js)
+    cours.increment('telechargements').catch(() => { });
 
     if (req.user) {
       Telechargement.create({
@@ -113,13 +172,13 @@ const telechargerCours = async (req, res, next) => {
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
-    const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
+    const ext = (nomFichier || '').includes('.') ? '' : '.pdf';
     const fallback = `cours_${cours.id}${ext}`;
 
-    return await downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
+    return await downloadStoredFile(res, cheminFichier, nomFichier || fallback);
   } catch (err) {
     next(err);
   }
@@ -127,6 +186,9 @@ const telechargerCours = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────
 //  POST /cours — Enseignant ou Admin seulement
+//  Accepte plusieurs fichiers (upload.array('fichiers', N)) :
+//    - le 1er fichier devient le fichier principal du Cours
+//    - les suivants sont enregistrés dans CoursDocument
 // ──────────────────────────────────────────────────────────────────
 const creerCours = async (req, res, next) => {
   try {
@@ -171,14 +233,18 @@ const creerCours = async (req, res, next) => {
       statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
 
-    if (uploadedFiles.length > 1 && typeof cours.createCoursDocuments === 'function') {
-      const documents = uploadedFiles.slice(1).map((file) => ({
+    // Fichiers additionnels (2e, 3e, ...) → table CoursDocument
+    if (uploadedFiles.length > 1) {
+      // localiser le bloc qui construit "documents" pour bulkCreate
+      const documents = fichiersAdditionnels.map((f, index) => ({
         cours_id: cours.id,
-        cheminFichier: file.path || file.url,
-        nomFichierOriginal: file.originalname,
-        tailleFichier: file.size,
+        ordre: index,        // ← ajouter cette ligne
+        cheminFichier: f.cheminFichier,
+        nomFichierOriginal: f.originalname,
+        tailleFichier: f.size,
       }));
-      await cours.createCoursDocuments(documents);
+      await CoursDocument.bulkCreate(documents);
+      await CoursDocument.bulkCreate(documents);
     }
 
     return created(res, cours, 'Cours déposé avec succès. En attente de validation.');
@@ -205,15 +271,24 @@ const changerStatut = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────
 //  DELETE /cours/:id — Admin seulement
+//  Supprime le fichier principal + tous les documents additionnels
+//  (fichiers physiques/Blob + lignes CoursDocument)
 // ──────────────────────────────────────────────────────────────────
 const supprimerCours = async (req, res, next) => {
   try {
-    const cours = await Cours.findByPk(req.params.id);
+    const cours = await Cours.findByPk(req.params.id, {
+      include: [{ model: CoursDocument, as: 'documents' }],
+    });
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
-    // Option: supprimer aussi le fichier physique
-    const fs = require('fs');
-    if (fs.existsSync(cours.cheminFichier)) fs.unlinkSync(cours.cheminFichier);
+    await deleteStoredFile(cours.cheminFichier);
+    await Promise.all(
+      (cours.documents || []).map((doc) => deleteStoredFile(doc.cheminFichier))
+    );
+
+    // Si l'association a onDelete: 'CASCADE', les CoursDocument sont
+    // supprimés automatiquement ; sinon, les supprimer explicitement :
+    await CoursDocument.destroy({ where: { cours_id: cours.id } });
 
     await cours.destroy();
     return success(res, {}, 'Cours supprimé.');
@@ -222,4 +297,11 @@ const supprimerCours = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerCours, creerCours, changerStatut, supprimerCours };
+module.exports = {
+  listerCours,
+  getCours,
+  telechargerDocument,
+  creerCours,
+  changerStatut,
+  supprimerCours,
+};
