@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_production');
+const { sequelize }  = require('../config/database_developpement');
 const { DataTypes }  = require('sequelize');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
@@ -118,7 +118,6 @@ const Utilisateur = sequelize.define('Utilisateur', {
     { fields: ['filiere_id'] },
   ],
 });
-
 
 // ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Unité d'Enseignement (UE / Matière)
