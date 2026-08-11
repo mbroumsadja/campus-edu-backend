@@ -59,6 +59,7 @@ app.use(cors({
   exposedHeaders: ['content-Disposition']
 }));
 
+
 // 3. Compression gzip — réduit la taille des réponses JSON (~70%)
 //    Essentiel pour la performance sous charge
 app.use(compression());
