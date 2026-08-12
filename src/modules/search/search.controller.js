@@ -168,19 +168,18 @@ const cours = await Cours.findAll({
       });
       downloadedRows.forEach(row => downloadedCourseIds.add(row.cours_id));
     }
-
 cours.forEach(c => {
   if (!c.ue || !c.ue.filiere) return;
-  const documents = c.fichiers && c.fichiers.length > 0 ? c.fichiers : [];
-  const total = documents.length;
+  const fichiers = c.fichiers && c.fichiers.length > 0 ? c.fichiers : []; // renommé pour éviter la collision
+  const total = fichiers.length;
 
-  documents.forEach((doc, i) => {
-    docs.push({
-      id: doc.id,                      // ← id du DOCUMENT, plus id du cours
-      cours_id: c.id,                  // ← ajouter : pour regrouper côté mobile
+  fichiers.forEach((doc, i) => {
+    documents.push({   // on pousse bien dans le tableau externe "documents"
+      id: doc.id,
+      cours_id: c.id,
       type_contenu: 'cours',
       nom: doc.nomFichierOriginal || c.titre,
-      tag_ordre: total > 1 ? `${i + 1}/${total}` : null,   // ← le tag demandé
+      tag_ordre: total > 1 ? `${i + 1}/${total}` : null,
       type: c.type,
       disponible: true,
       deja_telecharge: downloadedCourseIds.has(c.id),
@@ -198,6 +197,7 @@ cours.forEach(c => {
       annee_academique: c.anneAcademique || null,
     });
   });
+});
 });
 
     sujets.forEach(s => {
