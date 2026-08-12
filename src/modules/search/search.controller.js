@@ -170,11 +170,11 @@ const cours = await Cours.findAll({
     }
 cours.forEach(c => {
   if (!c.ue || !c.ue.filiere) return;
-  const fichiers = c.fichiers && c.fichiers.length > 0 ? c.fichiers : []; // renommé pour éviter la collision
+  const fichiers = c.fichiers && c.fichiers.length > 0 ? c.fichiers : [];
   const total = fichiers.length;
 
   fichiers.forEach((doc, i) => {
-    documents.push({   // on pousse bien dans le tableau externe "documents"
+    documents.push({
       id: doc.id,
       cours_id: c.id,
       type_contenu: 'cours',
@@ -198,8 +198,6 @@ cours.forEach(c => {
     });
   });
 });
-});
-
     sujets.forEach(s => {
       if (s.ue && s.ue.filiere) {
         documents.push({
