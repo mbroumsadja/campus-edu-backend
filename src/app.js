@@ -7,7 +7,6 @@ const morgan       = require('morgan');
 const compression  = require('compression');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
-app.set('trust proxy', 1);
 
 const { connectDB }      = require('./config/database');
 const logger             = require('./utils/logger');
@@ -33,7 +32,7 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
-
+app.set('trust proxy', 1);
 // 2. CORS — origines autorisées uniquement
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
