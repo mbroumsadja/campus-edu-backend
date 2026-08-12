@@ -1,6 +1,6 @@
 // src/modules/search/search.controller.js
 const path = require('path');
-const { Cours, Sujet, UE, Filiere, Ecole, Telechargement } = require('../../models');
+const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
@@ -140,12 +140,17 @@ const rechercherDocuments = async (req, res, next) => {
       }
     }
 
-    const cours = await Cours.findAll({
-      where: coursWhere,
-      include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'tailleFichier', 'nomFichierOriginal', 'anneAcademique', 'telechargemements'],
-      order: [['createdAt', 'DESC']],
-    });
+const cours = await Cours.findAll({
+  where: coursWhere,
+  include: [
+    includeUE,
+    { model: CoursDocument, as: 'fichiers' }   // ← ajouter cet include
+  ],
+  attributes: ['id', 'titre', 'type', 'anneAcademique', 'telechargemements'],
+  // ← retirer cheminFichier/tailleFichier/nomFichierOriginal d'ici,
+  //   ils viendront de chaque CoursDocument maintenant
+  order: [['createdAt', 'DESC']],
+});
 
     const sujets = await Sujet.findAll({
       where: sujetWhere,
@@ -164,30 +169,36 @@ const rechercherDocuments = async (req, res, next) => {
       downloadedRows.forEach(row => downloadedCourseIds.add(row.cours_id));
     }
 
-    cours.forEach(c => {
-      if (c.ue && c.ue.filiere) {
-        documents.push({
-          id: c.id,
-          type_contenu: 'cours',
-          nom: c.titre,
-          type: c.type,
-          disponible: true,
-          deja_telecharge: downloadedCourseIds.has(c.id),
-          telechargements: c.telechargemements,
-          lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}`,
-          taille_octets: c.tailleFichier,
-          taille_lisible: formatTaille(c.tailleFichier),
-          niveau: c.ue.niveau,
-          semestre: c.ue.semestre,
-          filiere_code: c.ue.filiere.code,
-          filiere_nom: c.ue.filiere.nom,
-          ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
-          code_ue: c.ue.code,
-          intitule_ue: c.ue.intitule,
-          annee_academique: c.anneAcademique || null,
-        });
-      }
+cours.forEach(c => {
+  if (!c.ue || !c.ue.filiere) return;
+  const documents = c.fichiers && c.fichiers.length > 0 ? c.fichiers : [];
+  const total = documents.length;
+
+  documents.forEach((doc, i) => {
+    docs.push({
+      id: doc.id,                      // ← id du DOCUMENT, plus id du cours
+      cours_id: c.id,                  // ← ajouter : pour regrouper côté mobile
+      type_contenu: 'cours',
+      nom: doc.nomFichierOriginal || c.titre,
+      tag_ordre: total > 1 ? `${i + 1}/${total}` : null,   // ← le tag demandé
+      type: c.type,
+      disponible: true,
+      deja_telecharge: downloadedCourseIds.has(c.id),
+      telechargements: c.telechargemements,
+      lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
+      taille_octets: doc.tailleFichier,
+      taille_lisible: formatTaille(doc.tailleFichier),
+      niveau: c.ue.niveau,
+      semestre: c.ue.semestre,
+      filiere_code: c.ue.filiere.code,
+      filiere_nom: c.ue.filiere.nom,
+      ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
+      code_ue: c.ue.code,
+      intitule_ue: c.ue.intitule,
+      annee_academique: c.anneAcademique || null,
     });
+  });
+});
 
     sujets.forEach(s => {
       if (s.ue && s.ue.filiere) {
@@ -253,14 +264,27 @@ const telechargerDocument = async (req, res, next) => {
       return error(res, 'ID invalide.', 400);
     }
 
-    if (type === 'cours') {
-      const cours = await Cours.findByPk(documentId, {
-        attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
-      });
+if (type === 'cours') {
+  const { document_id } = req.query;
 
-      if (!cours || cours.statut !== 'publie') {
-        return error(res, 'Cours non disponible.', 404);
-      }
+  const cours = await Cours.findByPk(documentId, {
+    attributes: ['id', 'titre', 'statut'],
+  });
+  if (!cours || cours.statut !== 'publie') return error(res, 'Cours non disponible.', 404);
+
+  let cheminFichier, nomFichierOriginal;
+  if (document_id) {
+    const doc = await CoursDocument.findOne({ where: { id: document_id, cours_id: cours.id } });
+    if (!doc) return error(res, 'Document introuvable.', 404);
+    cheminFichier = doc.cheminFichier;
+    nomFichierOriginal = doc.nomFichierOriginal;
+  } else {
+
+    const doc = await CoursDocument.findOne({ where: { cours_id: cours.id }, order: [['id', 'ASC']] });
+    if (!doc) return error(res, 'Aucun document disponible.', 404);
+    cheminFichier = doc.cheminFichier;
+    nomFichierOriginal = doc.nomFichierOriginal;
+  }
 
       cours.increment('telechargemements').catch(() => {});
 
