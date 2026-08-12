@@ -1,4 +1,5 @@
 // src/modules/search/search.controller.js
+const path = require('path');
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement } = require('../../models');
 const { Op } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');

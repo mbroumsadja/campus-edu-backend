@@ -1,6 +1,6 @@
 // src/config/resetDb.js
 require('dotenv').config();
-const { sequelize } = require('./database');
+const { sequelize } = require('./database_production');
 const logger = require('../utils/logger');
 const { deleteStoredFile } = require('../middlewares/upload');
 const { Cours, CoursDocument, Sujet } = require('../models');
