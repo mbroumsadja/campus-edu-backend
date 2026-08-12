@@ -1,7 +1,7 @@
 // src/models/index.js
 // Centralise tous les modèles et leurs associations
 
-const { sequelize }  = require('../config/database_production');
+const { sequelize }  = require('../config/database');
 const { DataTypes }  = require('sequelize');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
