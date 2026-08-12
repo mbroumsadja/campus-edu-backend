@@ -8,7 +8,7 @@ const compression  = require('compression');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
-const { connectDB }      = require('./config/database_production');
+const { connectDB }      = require('./config/database');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
