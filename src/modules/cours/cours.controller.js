@@ -148,6 +148,22 @@ const creerCours = async (req, res, next) => {
       }
     }
 
+    // Flux "client upload" : le navigateur a déjà envoyé les fichiers
+    // directement à Vercel Blob (voir /api/upload/client-token) pour
+    // contourner la limite de 4,5 Mo par requête sur Vercel Functions.
+    // Le body JSON contient alors un tableau `fichiers` avec les blobs
+    // déjà uploadés, au lieu de fichiers multipart.
+    if (Array.isArray(req.body?.fichiers)) {
+      req.body.fichiers.forEach((f) => {
+        if (!f?.url) return;
+        uploadedFiles.push({
+          url: f.url,
+          originalname: f.nomFichierOriginal || f.pathname || 'document',
+          size: f.tailleFichier || f.size || null,
+        });
+      });
+    }
+
     if (uploadedFiles.length === 0) {
       return error(res, 'Aucun fichier fourni.', 400);
     }

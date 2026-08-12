@@ -19,6 +19,7 @@ const coursRoutes    = require('./modules/cours/cours.routes');
 const sujetsRoutes   = require('./modules/sujets/sujets.routes');
 const filieresRoutes = require('./modules/filieres/filieres.routes');
 const ecolesRoutes   = require('./modules/ecoles/ecoles.routes');
+const uploadRoutes   = require('./modules/upload/upload.routes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -120,6 +121,7 @@ app.use('/api/cours',    coursRoutes);
 app.use('/api/sujets',   sujetsRoutes);
 app.use('/api/filieres', filieresRoutes);
 app.use('/api/ecoles', ecolesRoutes);
+app.use('/api/upload', uploadRoutes);
 app.use('/api/search', require('./modules/search/search.routes'));
 
 // Route de santé (healthcheck — utile pour Docker / load balancer)
