@@ -270,34 +270,29 @@ if (type === 'cours') {
   });
   if (!cours || cours.statut !== 'publie') return error(res, 'Cours non disponible.', 404);
 
-  let cheminFichier, nomFichierOriginal;
+  let doc;
   if (document_id) {
-    const doc = await CoursDocument.findOne({ where: { id: document_id, cours_id: cours.id } });
+    doc = await CoursDocument.findOne({ where: { id: document_id, cours_id: cours.id } });
     if (!doc) return error(res, 'Document introuvable.', 404);
-    cheminFichier = doc.cheminFichier;
-    nomFichierOriginal = doc.nomFichierOriginal;
   } else {
-
-    const doc = await CoursDocument.findOne({ where: { cours_id: cours.id }, order: [['id', 'ASC']] });
+    doc = await CoursDocument.findOne({ where: { cours_id: cours.id }, order: [['id', 'ASC']] });
     if (!doc) return error(res, 'Aucun document disponible.', 404);
-    cheminFichier = doc.cheminFichier;
-    nomFichierOriginal = doc.nomFichierOriginal;
   }
 
-      cours.increment('telechargemements').catch(() => {});
+  cours.increment('telechargemements').catch(() => {});
 
-      if (req.user) {
-        Telechargement.create({
-          utilisateur_id: req.user.id,
-          cours_id: cours.id,
-          ipAddress: req.ip || req.connection?.remoteAddress || null,
-          userAgent: req.get('User-Agent'),
-        }).catch(() => {});
-      }
+  if (req.user) {
+    Telechargement.create({
+      utilisateur_id: req.user.id,
+      cours_id: cours.id,
+      ipAddress: req.ip || req.connection?.remoteAddress || null,
+      userAgent: req.get('User-Agent'),
+    }).catch(() => {});
+  }
 
-      const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(cours.nomFichierOriginal || '') || '.pdf'}`;
-      return downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
-    }
+  const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(doc.nomFichierOriginal || '') || '.pdf'}`;
+  return downloadStoredFile(res, doc.cheminFichier, doc.nomFichierOriginal || fallback);
+}
 
     if (type === 'sujet') {
       const sujet = await Sujet.findByPk(documentId, {
