@@ -3,17 +3,17 @@ const router     = require('express').Router();
 const { body }   = require('express-validator');
 const controller = require('./filieres.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
+const optionalAuth = require('../../middlewares/optionalAuth');
 const { validate } = require('../../middlewares/validate');
 
-router.use(verifyToken);
+// Lecture : publique (comme /api/search), ne bloque jamais la requête
+router.get('/',     optionalAuth, controller.listerFilieres);
+router.get('/:id',  optionalAuth, controller.getFiliere);
+router.get('/:id/ues', optionalAuth, controller.listerUEs);
 
-// Routes accessibles à tous les utilisateurs connectés
-router.get('/',     controller.listerFilieres);
-router.get('/:id',  controller.getFiliere);
-router.get('/:id/ues', controller.listerUEs);
-
-// Routes admin uniquement
+// Écriture : réservée aux utilisateurs connectés avec le rôle admin
 router.post('/',
+  verifyToken,
   authorize('admin'),
   [
     body('code').trim().notEmpty().withMessage('Code obligatoire'),
@@ -25,6 +25,7 @@ router.post('/',
 );
 
 router.put('/:id',
+  verifyToken,
   authorize('admin'),
   [
     body('ecole_id').optional().isInt().withMessage('Ecole invalide'),
@@ -35,6 +36,7 @@ router.put('/:id',
 
 // Créer une UE dans une filière
 router.post('/:id/ues',
+  verifyToken,
   authorize('admin'),
   [
     body('code').trim().notEmpty(),
