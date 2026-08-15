@@ -7,9 +7,14 @@ const { downloadStoredFile } = require('../../middlewares/upload');
 
 // Comparaison insensible à la casse, portable MySQL / PostgreSQL / SQLite
 // (Op.iLike n'existe que sous Postgres — on évite de dépendre du dialecte)
-const ilike = (columnPath, term) =>
-  whereFn(fn('LOWER', col(columnPath)), { [Op.like]: `%${term.toLowerCase()}%` });
+const toSnakeCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
+const ilike = (columnPath, term) => {
+  const parts = columnPath.split('.');
+  const attribute = toSnakeCase(parts.pop());
+  const dbColumnPath = [...parts, attribute].join('.');
+  return whereFn(fn('LOWER', col(dbColumnPath)), { [Op.like]: `%${term.toLowerCase()}%` });
+};
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
 //  Public — recherche de documents (Cours + Sujets d'examen)
