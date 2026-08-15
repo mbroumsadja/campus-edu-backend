@@ -1,9 +1,14 @@
 // src/modules/search/search.controller.js
 const path = require('path');
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = require('../../models');
-const { Op } = require('sequelize');
+const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
+
+// Comparaison insensible à la casse, portable MySQL / PostgreSQL / SQLite
+// (Op.iLike n'existe que sous Postgres — on évite de dépendre du dialecte)
+const ilike = (columnPath, term) =>
+  whereFn(fn('LOWER', col(columnPath)), { [Op.like]: `%${term.toLowerCase()}%` });
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
@@ -16,7 +21,7 @@ const { downloadStoredFile } = require('../../middlewares/upload');
 //    - ecole (optionnel) : nom de l'école
 //    - ecole_id (optionnel) : identifiant de l'école
 //    - annee (optionnel) : année académique ou année de sujet
-//    - type (optionnel) : pdf, video, slide, autre, partiel, rattrapage, terminal, tp, td
+//    - type (optionnel) : cours, sujet, pdf, video, slide, autre, partiel, rattrapage, terminal, tp, td
 //  Retourne : liste de documents avec lien de téléchargement, type, niveau, filière, école, code UE
 // ──────────────────────────────────────────────────────────────────
 const rechercherDocuments = async (req, res, next) => {
@@ -41,8 +46,6 @@ const rechercherDocuments = async (req, res, next) => {
       return error(res, 'Fournissez un terme de recherche ou au moins un filtre.', 400);
     }
 
-    const searchCondition = searchTerm ? { [Op.like]: `%${searchTerm}%` } : undefined;
-
     const ueWhere = {};
     const filiereWhere = {};
     const ecoleWhere = {};
@@ -52,8 +55,8 @@ const rechercherDocuments = async (req, res, next) => {
     if (ue) {
       const normalizedUE = String(ue).trim();
       ueWhere[Op.or] = [
-        { code: { [Op.like]: `%${normalizedUE}%` } },
-        { intitule: { [Op.like]: `%${normalizedUE}%` } },
+        ilike('code', normalizedUE),
+        ilike('intitule', normalizedUE),
       ];
     }
     if (ue_id) ueWhere.id = Number(ue_id);
@@ -61,8 +64,8 @@ const rechercherDocuments = async (req, res, next) => {
     if (filiere) {
       const normalizedFiliere = String(filiere).trim();
       filiereWhere[Op.or] = [
-        { code: { [Op.like]: normalizedFiliere } },
-        { nom: { [Op.like]: normalizedFiliere } },
+        ilike('code', normalizedFiliere),
+        ilike('nom', normalizedFiliere),
       ];
     }
     if (filiere_id) filiereWhere.id = Number(filiere_id);
@@ -106,30 +109,56 @@ const rechercherDocuments = async (req, res, next) => {
       statut: 'publie',
     };
 
-    if (searchCondition) {
+    if (searchTerm) {
       coursWhere[Op.or] = [
-        { titre: searchCondition },
-        { nomFichierOriginal: searchCondition },
-        { '$ue.intitule$': searchCondition },
-        { '$ue.code$': searchCondition },
-        { '$ue.filiere.code$': searchCondition },
-        { '$ue.filiere.nom$': searchCondition },
-        { '$ue.filiere.ecole.ecole$': searchCondition },
+        ilike('titre', searchTerm),
+        ilike('nomFichierOriginal', searchTerm),
+        ilike('ue.intitule', searchTerm),
+        ilike('ue.code', searchTerm),
+        ilike('ue.filiere.code', searchTerm),
+        ilike('ue.filiere.nom', searchTerm),
+        ilike('ue.filiere.ecole.ecole', searchTerm),
       ];
 
       sujetWhere[Op.or] = [
-        { titre: searchCondition },
-        { '$ue.intitule$': searchCondition },
-        { '$ue.code$': searchCondition },
-        { '$ue.filiere.code$': searchCondition },
-        { '$ue.filiere.nom$': searchCondition },
-        { '$ue.filiere.ecole.ecole$': searchCondition },
+        ilike('titre', searchTerm),
+        ilike('ue.intitule', searchTerm),
+        ilike('ue.code', searchTerm),
+        ilike('ue.filiere.code', searchTerm),
+        ilike('ue.filiere.nom', searchTerm),
+        ilike('ue.filiere.ecole.ecole', searchTerm),
       ];
     }
 
+    // "cours" / "sujet" = catégorie de contenu, pas une valeur d'ENUM de format.
+    // On les traite à part pour ne jamais laisser une valeur invalide atteindre
+    // les colonnes ENUM Postgres (ça faisait planter la requête en 500).
+    const COURS_TYPES = ['pdf', 'video', 'slide', 'autre'];
+    const SUJET_TYPES = ['partiel', 'rattrapage', 'terminal', 'tp', 'td'];
+
+    let onlyCours = false;
+    let onlySujets = false;
+
     if (type) {
-      coursWhere.type = type;
-      sujetWhere.type = type;
+      const normalizedType = String(type).trim().toLowerCase();
+
+      if (normalizedType === 'cours') {
+        onlyCours = true;
+      } else if (normalizedType === 'sujet' || normalizedType === 'sujets') {
+        onlySujets = true;
+      } else if (COURS_TYPES.includes(normalizedType)) {
+        coursWhere.type = normalizedType;
+        onlyCours = true; // ce format n'existe que côté cours
+      } else if (SUJET_TYPES.includes(normalizedType)) {
+        sujetWhere.type = normalizedType;
+        onlySujets = true; // ce format n'existe que côté sujets
+      } else {
+        // Type inconnu de l'ENUM (ex: "docx", "epub", valeur mal formée…)
+        // → on le range dans le fourre-tout "autre" plutôt que de planter.
+        // "autre" n'existe que dans l'ENUM Cours, donc on limite aux cours.
+        coursWhere.type = 'autre';
+        onlyCours = true;
+      }
     }
 
     if (annee) {
@@ -140,19 +169,17 @@ const rechercherDocuments = async (req, res, next) => {
       }
     }
 
-const cours = await Cours.findAll({
-  where: coursWhere,
-  include: [
-    includeUE,
-    { model: CoursDocument, as: 'fichiers' }   // ← ajouter cet include
-  ],
-  attributes: ['id', 'titre', 'type', 'anneAcademique', 'telechargemements'],
-  // ← retirer cheminFichier/tailleFichier/nomFichierOriginal d'ici,
-  //   ils viendront de chaque CoursDocument maintenant
-  order: [['createdAt', 'DESC']],
-});
+    const cours = onlySujets ? [] : await Cours.findAll({
+      where: coursWhere,
+      include: [
+        includeUE,
+        { model: CoursDocument, as: 'fichiers' }
+      ],
+      attributes: ['id', 'titre', 'type', 'anneAcademique', 'telechargemements'],
+      order: [['createdAt', 'DESC']],
+    });
 
-    const sujets = await Sujet.findAll({
+    const sujets = onlyCours ? [] : await Sujet.findAll({
       where: sujetWhere,
       include: [includeUE],
       attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargemements'],
@@ -168,36 +195,38 @@ const cours = await Cours.findAll({
       });
       downloadedRows.forEach(row => downloadedCourseIds.add(row.cours_id));
     }
-cours.forEach(c => {
-  if (!c.ue || !c.ue.filiere) return;
-  const fichiers = c.fichiers && c.fichiers.length > 0 ? c.fichiers : [];
-  const total = fichiers.length;
 
-  fichiers.forEach((doc, i) => {
-    documents.push({
-      id: doc.id,
-      cours_id: c.id,
-      type_contenu: 'cours',
-      nom: doc.nomFichierOriginal || c.titre,
-      tag_ordre: total > 1 ? `${i + 1}/${total}` : null,
-      type: c.type,
-      disponible: true,
-      deja_telecharge: downloadedCourseIds.has(c.id),
-      telechargements: c.telechargemements,
-      lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
-      taille_octets: doc.tailleFichier,
-      taille_lisible: formatTaille(doc.tailleFichier),
-      niveau: c.ue.niveau,
-      semestre: c.ue.semestre,
-      filiere_code: c.ue.filiere.code,
-      filiere_nom: c.ue.filiere.nom,
-      ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
-      code_ue: c.ue.code,
-      intitule_ue: c.ue.intitule,
-      annee_academique: c.anneAcademique || null,
+    cours.forEach(c => {
+      if (!c.ue || !c.ue.filiere) return;
+      const fichiers = c.fichiers && c.fichiers.length > 0 ? c.fichiers : [];
+      const total = fichiers.length;
+
+      fichiers.forEach((doc, i) => {
+        documents.push({
+          id: doc.id,
+          cours_id: c.id,
+          type_contenu: 'cours',
+          nom: doc.nomFichierOriginal || c.titre,
+          tag_ordre: total > 1 ? `${i + 1}/${total}` : null,
+          type: c.type,
+          disponible: true,
+          deja_telecharge: downloadedCourseIds.has(c.id),
+          telechargements: c.telechargemements,
+          lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
+          taille_octets: doc.tailleFichier,
+          taille_lisible: formatTaille(doc.tailleFichier),
+          niveau: c.ue.niveau,
+          semestre: c.ue.semestre,
+          filiere_code: c.ue.filiere.code,
+          filiere_nom: c.ue.filiere.nom,
+          ecole_nom: c.ue.filiere.ecole ? c.ue.filiere.ecole.ecole : null,
+          code_ue: c.ue.code,
+          intitule_ue: c.ue.intitule,
+          annee_academique: c.anneAcademique || null,
+        });
+      });
     });
-  });
-});
+
     sujets.forEach(s => {
       if (s.ue && s.ue.filiere) {
         documents.push({
@@ -262,37 +291,37 @@ const telechargerDocument = async (req, res, next) => {
       return error(res, 'ID invalide.', 400);
     }
 
-if (type === 'cours') {
-  const { document_id } = req.query;
+    if (type === 'cours') {
+      const { document_id } = req.query;
 
-  const cours = await Cours.findByPk(documentId, {
-    attributes: ['id', 'titre', 'statut'],
-  });
-  if (!cours || cours.statut !== 'publie') return error(res, 'Cours non disponible.', 404);
+      const cours = await Cours.findByPk(documentId, {
+        attributes: ['id', 'titre', 'statut'],
+      });
+      if (!cours || cours.statut !== 'publie') return error(res, 'Cours non disponible.', 404);
 
-  let doc;
-  if (document_id) {
-    doc = await CoursDocument.findOne({ where: { id: document_id, cours_id: cours.id } });
-    if (!doc) return error(res, 'Document introuvable.', 404);
-  } else {
-    doc = await CoursDocument.findOne({ where: { cours_id: cours.id }, order: [['id', 'ASC']] });
-    if (!doc) return error(res, 'Aucun document disponible.', 404);
-  }
+      let doc;
+      if (document_id) {
+        doc = await CoursDocument.findOne({ where: { id: document_id, cours_id: cours.id } });
+        if (!doc) return error(res, 'Document introuvable.', 404);
+      } else {
+        doc = await CoursDocument.findOne({ where: { cours_id: cours.id }, order: [['id', 'ASC']] });
+        if (!doc) return error(res, 'Aucun document disponible.', 404);
+      }
 
-  cours.increment('telechargemements').catch(() => {});
+      cours.increment('telechargemements').catch(() => {});
 
-  if (req.user) {
-    Telechargement.create({
-      utilisateur_id: req.user.id,
-      cours_id: cours.id,
-      ipAddress: req.ip || req.connection?.remoteAddress || null,
-      userAgent: req.get('User-Agent'),
-    }).catch(() => {});
-  }
+      if (req.user) {
+        Telechargement.create({
+          utilisateur_id: req.user.id,
+          cours_id: cours.id,
+          ipAddress: req.ip || req.connection?.remoteAddress || null,
+          userAgent: req.get('User-Agent'),
+        }).catch(() => {});
+      }
 
-  const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(doc.nomFichierOriginal || '') || '.pdf'}`;
-  return downloadStoredFile(res, doc.cheminFichier, doc.nomFichierOriginal || fallback);
-}
+      const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(doc.nomFichierOriginal || '') || '.pdf'}`;
+      return downloadStoredFile(res, doc.cheminFichier, doc.nomFichierOriginal || fallback);
+    }
 
     if (type === 'sujet') {
       const sujet = await Sujet.findByPk(documentId, {
