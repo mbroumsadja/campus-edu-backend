@@ -369,7 +369,7 @@ const AuditLog = sequelize.define('AuditLog', {
     defaultValue: 'succes',
   },
   created_at:{
-    type: DataTypes.DATE()
+    type: DataTypes.DATE
   }
 }, {
   tableName: 'audit_logs',
