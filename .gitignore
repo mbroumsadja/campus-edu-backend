@@ -33,6 +33,6 @@ docker-compose.override.yml
 
 # Local test or seed scripts output
 uploads/test/
-
+developpement/
 # Keep dev scripts in repo but do not commit generated data
 # (Reset/seed scripts are part of the project, not runtime data.)

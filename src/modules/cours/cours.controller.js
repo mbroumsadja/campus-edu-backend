@@ -3,7 +3,7 @@
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile } = require('../../middlewares/upload');
+const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -208,6 +208,93 @@ const documents = uploadedFiles.map((file) => ({
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  PUT /cours/:id — Son créateur ou un admin
+// ──────────────────────────────────────────────────────────────────
+const modifierCours = async (req, res, next) => {
+  try {
+    const cours = await Cours.findByPk(req.params.id);
+    if (!cours) return error(res, 'Cours introuvable.', 404);
+
+    const { titre, description, type, ue_id, anneAcademique } = req.body;
+    const updates = {};
+
+    if (typeof titre !== 'undefined') {
+      const cleanedTitre = String(titre).trim();
+      if (!cleanedTitre) return error(res, 'Le titre est obligatoire.', 400);
+      updates.titre = cleanedTitre;
+    }
+    if (typeof description !== 'undefined') updates.description = description;
+    if (typeof type !== 'undefined') updates.type = type;
+    if (typeof anneAcademique !== 'undefined') {
+      updates.anneAcademique = anneAcademique;
+    }
+    if (typeof ue_id !== 'undefined') {
+      const ue = await UE.findByPk(ue_id);
+      if (!ue) return error(res, 'Unité d\'enseignement introuvable.', 404);
+      updates.ue_id = ue_id;
+    }
+
+    // Gestion des fichiers uploadés : champ 'main' remplace le fichier principal
+    // et 'documents' ajoute des fichiers rattachés.
+    // Les fichiers peuvent aussi être fournis via req.body.fichiers (tableau d'objets { url, nomFichierOriginal, tailleFichier }).
+    const uploadedMain = req.files?.main?.[0] ?? null;
+    const uploadedDocs = (req.files?.documents && Array.isArray(req.files.documents)) ? req.files.documents : [];
+
+    // Si un nouveau main est envoyé, supprimer l'ancien stockage et mettre à jour les champs
+    if (uploadedMain) {
+      // supprimer l'ancien fichier stocké (s'il existe)
+      await deleteStoredFile(cours.cheminFichier).catch(() => {});
+      updates.cheminFichier = uploadedMain.path || uploadedMain.url || null;
+      updates.nomFichierOriginal = uploadedMain.originalname || uploadedMain.filename || null;
+      updates.tailleFichier = uploadedMain.size || null;
+    }
+
+    // Créer des documents supplémentaires si fournis
+    const newDocuments = [];
+    if (Array.isArray(req.body?.fichiers)) {
+      req.body.fichiers.forEach((f) => {
+        if (!f?.url) return;
+        newDocuments.push({
+          cours_id: cours.id,
+          cheminFichier: f.url,
+          nomFichierOriginal: f.nomFichierOriginal || f.pathname || 'document',
+          tailleFichier: f.tailleFichier || f.size || null,
+        });
+      });
+    }
+
+    if (uploadedDocs.length) {
+      uploadedDocs.forEach((file) => {
+        newDocuments.push({
+          cours_id: cours.id,
+          cheminFichier: file.path || file.url,
+          nomFichierOriginal: file.originalname || file.filename,
+          tailleFichier: file.size || null,
+        });
+      });
+    }
+
+    // Appliquer mises à jour de métadonnées
+    if (Object.keys(updates).length > 0) {
+      await cours.update(updates);
+    }
+
+    if (newDocuments.length > 0) {
+      await CoursDocument.bulkCreate(newDocuments);
+    }
+
+    if (req.user.role === 'enseignant') {
+      await cours.update({ statut: 'en_attente' });
+    }
+
+    const refreshed = await Cours.findByPk(cours.id, { include: [{ model: CoursDocument, as: 'fichiers' }] });
+    return success(res, refreshed, 'Cours modifié avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
 //  PATCH /cours/:id/statut — Admin seulement (valider / archiver)
 // ──────────────────────────────────────────────────────────────────
 const changerStatut = async (req, res, next) => {
@@ -224,17 +311,25 @@ const changerStatut = async (req, res, next) => {
 };
 
 // ──────────────────────────────────────────────────────────────────
-//  DELETE /cours/:id — Admin seulement
+//  DELETE /cours/:id — Son créateur ou un admin
 // ──────────────────────────────────────────────────────────────────
 const supprimerCours = async (req, res, next) => {
   try {
-    const cours = await Cours.findByPk(req.params.id);
+    const cours = await Cours.findByPk(req.params.id, { include: [{ model: CoursDocument, as: 'fichiers' }] });
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
-    // Option: supprimer aussi le fichier physique
-    const fs = require('fs');
-    if (fs.existsSync(cours.cheminFichier)) fs.unlinkSync(cours.cheminFichier);
+    // Supprimer fichier principal depuis le stockage (local ou distant)
+    if (cours.cheminFichier) {
+      await deleteStoredFile(cours.cheminFichier).catch(() => {});
+    }
 
+    // Supprimer chaque document rattaché du stockage
+    for (const doc of (cours.fichiers || [])) {
+      if (doc.cheminFichier) await deleteStoredFile(doc.cheminFichier).catch(() => {});
+    }
+
+    // Supprimer les enregistrements associés
+    await CoursDocument.destroy({ where: { cours_id: cours.id } });
     await cours.destroy();
     return success(res, {}, 'Cours supprimé.');
   } catch (err) {
@@ -273,4 +368,4 @@ const telechargerDocument = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerCours, telechargerDocument, creerCours, changerStatut, supprimerCours };
+module.exports = { listerCours, getCours, telechargerCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };

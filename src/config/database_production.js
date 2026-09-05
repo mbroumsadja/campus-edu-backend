@@ -16,7 +16,7 @@ const sequelize = new Sequelize(process.env.DB_URL,
         require: true,
         rejectUnauthorized: false 
       },
-      connectTimeout: 20000,
+      connectTimeout: 2000,
     },
 
     pool: {

@@ -3,7 +3,7 @@
 const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile } = require('../../middlewares/upload');
+const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /sujets
@@ -150,6 +150,62 @@ const creerSujet = async (req, res, next) => {
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  PUT /sujets/:id — Son créateur ou un admin
+// ──────────────────────────────────────────────────────────────────
+const modifierSujet = async (req, res, next) => {
+  try {
+    const sujet = await Sujet.findByPk(req.params.id);
+    if (!sujet) return error(res, 'Sujet introuvable.', 404);
+
+    const { titre, type, session, annee, ue_id } = req.body;
+    const updates = {};
+
+    if (typeof titre !== 'undefined') {
+      const cleanedTitre = String(titre).trim();
+      if (!cleanedTitre) return error(res, 'Titre obligatoire.', 400);
+      updates.titre = cleanedTitre;
+    }
+    if (typeof type !== 'undefined') updates.type = type;
+    if (typeof session !== 'undefined') updates.session = session;
+    if (typeof annee !== 'undefined') updates.annee = parseInt(annee, 10);
+    if (typeof ue_id !== 'undefined') {
+      const ue = await UE.findByPk(ue_id);
+      if (!ue) return error(res, 'UE introuvable.', 404);
+      updates.ue_id = ue_id;
+    }
+
+    // Fichiers uploadés
+    const uploadedSujet = req.files?.sujet?.[0] ?? null;
+    const uploadedCorrige = req.files?.corrige?.[0] ?? null;
+
+    if (uploadedSujet) {
+      // supprimer ancien fichier
+      await deleteStoredFile(sujet.cheminFichier).catch(() => {});
+      updates.cheminFichier = uploadedSujet.path || uploadedSujet.url || null;
+    }
+    if (uploadedCorrige) {
+      await deleteStoredFile(sujet.cheminCorrige).catch(() => {});
+      updates.cheminCorrige = uploadedCorrige.path || uploadedCorrige.url || null;
+      updates.avecCorrige = true;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return error(res, 'Aucune modification fournie.', 400);
+    }
+
+    await sujet.update(updates);
+    if (req.user.role === 'enseignant') {
+      await sujet.update({ statut: 'en_attente' });
+    }
+
+    const refreshed = await Sujet.findByPk(sujet.id);
+    return success(res, refreshed, 'Sujet modifié avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
 //  PATCH /sujets/:id/statut — Admin
 // ──────────────────────────────────────────────────────────────────
 const changerStatut = async (req, res, next) => {
@@ -163,4 +219,22 @@ const changerStatut = async (req, res, next) => {
   }
 };
 
-module.exports = { listerSujets, getSujet, telechargerSujet, creerSujet, changerStatut };
+// ──────────────────────────────────────────────────────────────────
+//  DELETE /sujets/:id — Son créateur ou un admin
+// ──────────────────────────────────────────────────────────────────
+const supprimerSujet = async (req, res, next) => {
+  try {
+    const sujet = await Sujet.findByPk(req.params.id);
+    if (!sujet) return error(res, 'Sujet introuvable.', 404);
+
+    if (sujet.cheminFichier) await deleteStoredFile(sujet.cheminFichier).catch(() => {});
+    if (sujet.cheminCorrige) await deleteStoredFile(sujet.cheminCorrige).catch(() => {});
+
+    await sujet.destroy();
+    return success(res, {}, 'Sujet supprimé.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { listerSujets, getSujet, telechargerSujet, creerSujet, modifierSujet, changerStatut, supprimerSujet };

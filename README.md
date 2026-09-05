@@ -4,38 +4,6 @@ Plateforme universitaire — API REST Node.js / Express / Sequelize / MySQL
 
 ---
 
-## Démarrage rapide
-
-```bash
-# 1. Installer les dépendances
-npm install
-
-# 2. Configurer l'environnement
-cp .env.example .env
-# → Éditer .env avec vos paramètres MySQL et JWT
-
-# 3. Créer la base de données dans MySQL
-# CREATE DATABASE uniportal_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-# 4. Créer les tables + données de test
-npm run db:seed
-
-# 5. Lancer en développement
-npm run dev
-
-# 6. Lancer en production
-npm start
-```
-
----
-
-## Comptes de test (après seed)
-
-| Rôle        | Matricule  | Mot de passe |
-|-------------|------------|--------------|
-| Admin       | ADM-0001   | Admin@1234   |
----
-
 ## Endpoints API
 
 ### Auth — `/api/auth`
@@ -47,32 +15,6 @@ npm start
 | POST    | `/logout`        | Auth    | Déconnexion (invalide le token)  |
 | GET     | `/me`            | Auth    | Profil de l'utilisateur connecté |
 
-**Exemple login :**
-```json
-POST /api/auth/login
-{
-  "matricule": "22FS0001",
-  "password":  "22FS0001"
-}
-```
-**Réponse :**
-```json
-{
-  "success": true,
-  "message": "Connexion réussie",
-  "data": {
-    "accessToken":  "eyJ...",
-    "refreshToken": "eyJ...",
-    "utilisateur": {
-      "id": 3, "matricule": "22FS0001",
-      "role": "etudiant", "niveau": "L2",
-      "filiere": { "nom": "Informatique" }
-    }
-  }
-}
-```
-
----
 
 ### Cours — `/api/cours`
 
@@ -142,42 +84,6 @@ Avant de pousser vers un dépôt partagé ou de préparer une version de product
 - ne commitez jamais `*.env`, `uploads/`, `logs/`, `coverage/`, ni les fichiers de base de données locales (`*.sqlite`, `*.sqlite3`).
 - utilisez `.gitignore` pour exclure les fichiers locaux et les données de test.
 - conservez uniquement le code source et les scripts nécessaires à l'exécution en production.
-
-## Docker
-
-Pour exécuter le projet avec Docker et MySQL :
-
-1. Copier le fichier d'environnement
-
-```bash
-cp .env.example .env
-```
-
-2. Modifier `.env` si besoin (par exemple `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`).
-
-3. Construire et démarrer les conteneurs :
-
-```bash
-docker compose up --build -d
-```
-
-4. Initialiser la base de données :
-
-```bash
-docker compose exec app npm run db:seed
-```
-
-5. Vérifier que l'API est disponible :
-
-```bash
-http://localhost:3000/health
-```
-
-6. Arrêter les conteneurs :
-
-```bash
-docker compose down
-```
 
 ---
 

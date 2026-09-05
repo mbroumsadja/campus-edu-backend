@@ -90,4 +90,34 @@ const ownerOrAdmin = (paramIdField = 'id') => {
   };
 };
 
-module.exports = { verifyToken, authorize, ownerOrAdmin };
+const canManageOwnedResource = (Model, ownerField = 'enseignant_id', paramName = 'id') => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return error(res, 'Non authentifié.', 401);
+      }
+
+      const resource = await Model.findByPk(req.params[paramName], {
+        attributes: ['id', ownerField],
+      });
+
+      if (!resource) {
+        return error(res, 'Ressource introuvable.', 404);
+      }
+
+      const isOwner = Number(resource[ownerField]) === Number(req.user.id);
+      const isAdmin = req.user.role === 'admin';
+
+      if (!isOwner && !isAdmin) {
+        return error(res, 'Accès refusé à cette ressource.', 403);
+      }
+
+      req.resource = resource;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+};
+
+module.exports = { verifyToken, authorize, ownerOrAdmin, canManageOwnedResource };

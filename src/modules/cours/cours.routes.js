@@ -1,8 +1,9 @@
 // src/modules/cours/cours.routes.js
 const router = require('express').Router();
 const { body, param } = require('express-validator');
+const { Cours } = require('../../models');
 const controller = require('./cours.controller');
-const { verifyToken, authorize } = require('../../middlewares/auth');
+const { verifyToken, authorize, canManageOwnedResource } = require('../../middlewares/auth');
 const { upload, handleUploadError } = require('../../middlewares/upload');
 const { validate } = require('../../middlewares/validate');
 const optionalAuth = require('../../middlewares/optionalAuth');
@@ -47,6 +48,27 @@ router.post('/',
   controller.creerCours
 );
 
+// Modifier un cours (son créateur ou un admin)
+router.put('/:id',
+  verifyToken,
+  authorize('enseignant', 'admin'),
+  canManageOwnedResource(Cours, 'enseignant_id'),
+  setFolder('cours'),
+  handleUploadError(upload.fields([
+    { name: 'main', maxCount: 1 },
+    { name: 'documents', maxCount: 10 },
+  ])),
+  [
+    body('titre').optional().trim().notEmpty().withMessage('Le titre est obligatoire'),
+    body('type').optional().isIn(['pdf', 'video', 'slide', 'autre']),
+    body('ue_id').optional().isInt().withMessage('UE invalide'),
+    body('description').optional(),
+    body('anneAcademique').optional().matches(/^\d{4}-\d{4}$/).withMessage('Année académique invalide'),
+  ],
+  validate,
+  controller.modifierCours
+);
+
 // Changer le statut d'un cours (admin uniquement)
 router.patch('/:id/statut',
   verifyToken,
@@ -56,10 +78,11 @@ router.patch('/:id/statut',
   controller.changerStatut
 );
 
-// Supprimer un cours (admin uniquement)
+// Supprimer un cours (son créateur ou un admin)
 router.delete('/:id',
   verifyToken,
-  authorize('admin'),
+  authorize('enseignant', 'admin'),
+  canManageOwnedResource(Cours, 'enseignant_id'),
   controller.supprimerCours
 );
 

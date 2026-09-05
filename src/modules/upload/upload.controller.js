@@ -44,13 +44,7 @@ const genererJetonClient = async (req, res) => {
             clientPayload: clientPayload || null,
           }),
         };
-      },
-      // Pas de onUploadCompleted : le front nous notifie explicitement
-      // via POST /api/cours ou /api/sujets une fois tous les fichiers
-      // uploadés, avec les métadonnées (url, nom, taille) des blobs.
-      // Ça évite de dépendre du webhook Vercel (signature, callback
-      // URL joignable) pour une opération qu'on peut faire de façon
-      // synchrone et plus simple à tester.
+      }
     });
 
     return res.status(200).json(jsonResponse);

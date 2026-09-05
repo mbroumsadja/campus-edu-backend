@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "nodemon src/app.js",
     "db:sync": "node src/config/syncDb.js",
-    "db:seed": "node src/config/seedDb.js",
-    "db:reset": "node src/config/resetDb.js",
+    "db:seed": "node developpement/seedDb.js",
+    "db:reset": "node developpement/resetDb.js",
     "test": "jest --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
