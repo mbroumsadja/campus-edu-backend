@@ -48,12 +48,41 @@ const modifierFiliere = async (req, res, next) => {
   try {
     const filiere = await Filiere.findByPk(req.params.id);
     if (!filiere) return error(res, 'Filière introuvable.', 404);
-    if (req.body.ecole_id) {
-      const ecole = await Ecole.findByPk(req.body.ecole_id);
-      if (!ecole) return error(res, 'École introuvable.', 400);
+
+    const { code, nom, departement, ecole_id } = req.body;
+    const updates = {};
+
+    if (typeof code !== 'undefined') {
+      const cleanedCode = String(code).trim();
+      if (!cleanedCode) return error(res, 'Code obligatoire.', 400);
+      updates.code = cleanedCode.toUpperCase();
     }
-    await filiere.update(req.body);
+    if (typeof nom !== 'undefined') {
+      const cleanedNom = String(nom).trim();
+      if (!cleanedNom) return error(res, 'Nom obligatoire.', 400);
+      updates.nom = cleanedNom;
+    }
+    if (typeof departement !== 'undefined') updates.departement = departement ? String(departement).trim() : null;
+    if (typeof ecole_id !== 'undefined') {
+      const ecole = await Ecole.findByPk(ecole_id);
+      if (!ecole) return error(res, 'École introuvable.', 400);
+      updates.ecole_id = ecole_id;
+    }
+
+    await filiere.update(updates);
     return success(res, filiere, 'Filière mise à jour.');
+  } catch (err) { next(err); }
+};
+
+const supprimerFiliere = async (req, res, next) => {
+  try {
+    const filiere = await Filiere.findByPk(req.params.id);
+    if (!filiere) return error(res, 'Filière introuvable.', 404);
+
+    await filiere.update({ actif: false });
+    await UE.update({ actif: false }, { where: { filiere_id: filiere.id } });
+
+    return success(res, {}, 'Filière supprimée.');
   } catch (err) { next(err); }
 };
 
@@ -84,4 +113,49 @@ const creerUE = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { listerFilieres, getFiliere, creerFiliere, modifierFiliere, listerUEs, creerUE };
+const modifierUE = async (req, res, next) => {
+  try {
+    const filiere = await Filiere.findByPk(req.params.id);
+    if (!filiere) return error(res, 'Filière introuvable.', 404);
+
+    const ue = await UE.findOne({ where: { id: req.params.ueId, filiere_id: req.params.id } });
+    if (!ue) return error(res, 'UE introuvable.', 404);
+
+    const { code, intitule, niveau, semestre, credits } = req.body;
+    const updates = {};
+
+    if (typeof code !== 'undefined') updates.code = String(code).trim().toUpperCase();
+    if (typeof intitule !== 'undefined') updates.intitule = String(intitule).trim();
+    if (typeof niveau !== 'undefined') updates.niveau = niveau;
+    if (typeof semestre !== 'undefined') updates.semestre = semestre;
+    if (typeof credits !== 'undefined') updates.credits = parseInt(credits, 10) || 3;
+
+    await ue.update(updates);
+    return success(res, ue, 'UE mise à jour.');
+  } catch (err) { next(err); }
+};
+
+const supprimerUE = async (req, res, next) => {
+  try {
+    const filiere = await Filiere.findByPk(req.params.id);
+    if (!filiere) return error(res, 'Filière introuvable.', 404);
+
+    const ue = await UE.findOne({ where: { id: req.params.ueId, filiere_id: req.params.id } });
+    if (!ue) return error(res, 'UE introuvable.', 404);
+
+    await ue.update({ actif: false });
+    return success(res, {}, 'UE supprimée.');
+  } catch (err) { next(err); }
+};
+
+module.exports = {
+  listerFilieres,
+  getFiliere,
+  creerFiliere,
+  modifierFiliere,
+  supprimerFiliere,
+  listerUEs,
+  creerUE,
+  modifierUE,
+  supprimerUE,
+};

@@ -28,10 +28,18 @@ router.put('/:id',
   verifyToken,
   authorize('admin'),
   [
+    body('code').optional().trim().notEmpty().withMessage('Code obligatoire'),
+    body('nom').optional().trim().notEmpty().withMessage('Nom obligatoire'),
     body('ecole_id').optional().isInt().withMessage('Ecole invalide'),
   ],
   validate,
   controller.modifierFiliere
+);
+
+router.delete('/:id',
+  verifyToken,
+  authorize('admin'),
+  controller.supprimerFiliere
 );
 
 // Créer une UE dans une filière
@@ -46,6 +54,25 @@ router.post('/:id/ues',
   ],
   validate,
   controller.creerUE
+);
+
+router.put('/:id/ues/:ueId',
+  verifyToken,
+  authorize('admin'),
+  [
+    body('code').optional().trim().notEmpty().withMessage('Code obligatoire'),
+    body('intitule').optional().trim().notEmpty().withMessage('Intitulé obligatoire'),
+    body('niveau').optional().isIn(['L1','L2','L3','M1','M2']),
+    body('semestre').optional().isIn(['S1','S2','S3','S4','S5','S6','S7','S8','S9','S10']),
+  ],
+  validate,
+  controller.modifierUE
+);
+
+router.delete('/:id/ues/:ueId',
+  verifyToken,
+  authorize('admin'),
+  controller.supprimerUE
 );
 
 module.exports = router;
