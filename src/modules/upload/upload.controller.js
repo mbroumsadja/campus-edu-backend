@@ -1,14 +1,6 @@
 // src/modules/upload/upload.controller.js
 // Émission de jetons d'upload client Vercel Blob.
 //
-// Contexte : Vercel Functions plafonne le corps de requête à 4,5 Mo.
-// Envoyer plusieurs fichiers via multipart/form-data vers notre API
-// (server upload) dépasse vite cette limite et provoque un 413.
-// On bascule donc sur le pattern "client upload" officiel de Vercel
-// Blob : le navigateur envoie les fichiers DIRECTEMENT à Vercel Blob,
-// notre backend ne fait que délivrer un jeton signé de courte durée
-// après avoir vérifié l'authentification/rôle et le type de fichier.
-// Voir : https://vercel.com/docs/vercel-blob/client-upload
 
 const { handleUpload } = require('@vercel/blob/client');
 const { error } = require('../../utils/apiResponse');

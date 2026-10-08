@@ -33,12 +33,12 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 app.set('trust proxy', 1);
+
 // 2. CORS — origines autorisées uniquement
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
 ];
 
-// Autorise toutes les URLs Vercel de TON projet (prod + previews)
 const isVercelPreview = (origin) => {
   return /^https:\/\/campus-edu-admin(-[a-z0-9]+)*(-tonusername)?\.vercel\.app$/.test(origin);
 };
@@ -62,7 +62,6 @@ app.use(cors({
 
 
 // 3. Compression gzip — réduit la taille des réponses JSON (~70%)
-//    Essentiel pour la performance sous charge
 app.use(compression());
 
 // 4. Parsing du corps des requêtes
@@ -82,7 +81,7 @@ app.use(morgan((tokens, req, res) => {
  ].join(' ');
 }, { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
-// 6. Rate limiting global — protection contre les abus
+// 6. Rate limiting global
 const globalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15, // 15 min
   max:      parseInt(process.env.RATE_LIMIT_MAX) || 1000,
@@ -91,7 +90,7 @@ const globalLimiter = rateLimit({
   message: { success: false, message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
 });
 
-// Rate limit plus strict sur le login (anti brute-force)
+// Rate limit plus strict sur le login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      100,
@@ -124,7 +123,7 @@ app.use('/api/ecoles', ecolesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/search', require('./modules/search/search.routes'));
 
-// Route de santé (healthcheck — utile pour Docker / load balancer)
+// Route de santé (healthcheck)
 app.get('/health', (_req, res) => {
   res.json({
     status:    'ok',
@@ -134,28 +133,10 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Route de test CORS (pratique pour débugger depuis le navigateur)
+// Route de test CORS
 app.get('/api/ping', (_req, res) => {
   res.json({ success: true, message: 'Backend Campus edu opérationnel 🚀' });
 });
-
-// Route de diagnostic (UNIQUEMENT en développement)
-// Test : GET http://localhost:3000/api/debug/user/ADM-0001
-if (process.env.NODE_ENV !== 'production') {
-  app.get('/api/debug/user/:matricule', async (req, res) => {
-    try {
-      const { Utilisateur } = require('./models');
-      const user = await Utilisateur.findOne({
-        where: { matricule: req.params.matricule.toUpperCase() },
-        attributes: ['id', 'matricule', 'nom', 'prenom', 'role', 'statut'],
-      });
-      if (!user) return res.json({ found: false, matricule: req.params.matricule });
-      res.json({ found: true, user });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-}
 
 // ══════════════════════════════════════════════════════════════════
 //  GESTION DES ERREURS (doit être APRÈS les routes)
@@ -175,8 +156,8 @@ const start = async () => {
     logger.info(`    Healthcheck   : http://localhost:${PORT}/health`);
   });
 
-  // Gestion propre de l'arrêt (Graceful shutdown)
-  // Essentiel pour ne pas couper des requêtes en cours lors d'un redémarrage
+// Gestion propre de l'arrêt (Graceful shutdown)
+
   const gracefulShutdown = async (signal) => {
     logger.info(`\n${signal} reçu. Arrêt gracieux...`);
     server.close(async () => {
@@ -186,7 +167,6 @@ const start = async () => {
       logger.info('Pool de connexions fermé. Au revoir 👋');
       process.exit(0);
     });
-    // Force l'arrêt après 10s si quelque chose bloque
     setTimeout(() => process.exit(1), 10000);
   };
 

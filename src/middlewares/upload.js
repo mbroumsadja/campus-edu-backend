@@ -172,7 +172,7 @@ const deleteStoredFile = async (storagePath) => {
   if (!storagePath) return;
 
   if (/^https?:\/\//i.test(storagePath)) {
-    // Adapte selon ton provider actif (Vercel Blob ici — remplace par l'appel B2 si c'est lui le stockage réel)
+    // Adapte selon ton provider actif
     await del(storagePath, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
     return;
   }

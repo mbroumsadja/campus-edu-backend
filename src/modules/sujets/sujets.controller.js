@@ -110,9 +110,6 @@ const creerSujet = async (req, res, next) => {
     let fichierSujet   = req.files?.sujet?.[0];
     let fichierCorrige = req.files?.corrige?.[0];
 
-    // Flux "client upload" : fichiers déjà envoyés directement à Vercel
-    // Blob depuis le navigateur (voir /api/upload/client-token), le
-    // body JSON contient alors leurs métadonnées au lieu de multipart.
     if (!fichierSujet && req.body?.sujet?.url) {
       fichierSujet = { url: req.body.sujet.url, size: req.body.sujet.tailleFichier };
     }

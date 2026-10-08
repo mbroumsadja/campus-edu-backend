@@ -4,9 +4,9 @@ const optionalAuth = require('../../middlewares/optionalAuth');
 const { rechercherDocuments, telechargerDocument } = require('./search.controller');
 
 // Endpoint dédié pour rechercher des documents
-router.get('/documents', optionalAuth, rechercherDocuments); // pas de verifyToken — 100% public
+router.get('/documents', optionalAuth, rechercherDocuments);
 
 // Endpoint public de téléchargement de documents
-router.get('/documents/telecharger', optionalAuth, telechargerDocument); // pas de verifyToken — 100% public
+router.get('/documents/telecharger', optionalAuth, telechargerDocument); 
 
 module.exports = router;

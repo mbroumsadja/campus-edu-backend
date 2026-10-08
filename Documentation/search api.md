@@ -10,13 +10,13 @@ Recherche des documents (cours et sujets d'examen) dans la base de données selo
 |-----------|------|-------------|-------------|
 | `nom` | string | ✅ Oui | Nom du document à rechercher (recherche partielle) |
 | `q` | string | ✅ Oui | Alias global pour la recherche texte |
-| `niveau` | string | ❌ Non | Niveau d'étude : `L1`, `L2`, `L3`, `M1`, `M2` |
-| `filiere` | string | ❌ Non | Code de la filière (ex: `INFO`, `MATH`, `GC`) |
-| `filiere_id` | integer | ❌ Non | Identifiant de la filière |
-| `ecole` | string | ❌ Non | Nom de l'école |
-| `ecole_id` | integer | ❌ Non | Identifiant de l'école |
-| `annee` | string/integer | ❌ Non | Année académique (`2025-2026`) ou année de sujet (`2025`) |
-| `type` | string | ❌ Non | Type de document : `pdf`, `video`, `slide`, `autre` (pour cours) ou `partiel`, `rattrapage`, `terminal`, `tp`, `td` (pour sujets) |
+| `niveau` | string | ✅ Oui | Niveau d'étude : `L1`, `L2`, `L3`, `M1`, `M2` |
+| `filiere` | string | ✅ Oui | Code de la filière (ex: `INFO`, `MATH`, `GC`) |
+| `filiere_id` | integer | ✅ Oui | Identifiant de la filière |
+| `ecole` | string | ✅ Oui | Nom de l'école |
+| `ecole_id` | integer | ✅ Oui | Identifiant de l'école |
+| `annee` | string/integer | ✅ Oui | Année académique (`2025-2026`) ou année de sujet (`2025`) |
+| `type` | string | ✅ Oui | Type de document : `pdf`, `video`, `slide`, `autre` (pour cours) ou `partiel`, `rattrapage`, `terminal`, `tp`, `td` (pour sujets) |
 
 ### Réponse (Succès - 200)
 
@@ -114,25 +114,6 @@ async function rechercherDocuments(nom, niveau = null, filiere = null, type = nu
 
 // Utilisation
 rechercherDocuments('algorithme', 'L2', 'INFO');
-```
-
-#### 6. Avec Axios
-```javascript
-const axios = require('axios');
-
-async function searchDocuments(nom, filters = {}) {
-  try {
-    const response = await axios.get('/api/search/documents', {
-      params: { nom, ...filters }
-    });
-    return response.data.data.documents;
-  } catch (error) {
-    console.error('Erreur de recherche:', error.response.data.message);
-  }
-}
-
-// Utilisation
-searchDocuments('cours', { niveau: 'L3', filiere: 'MATH' });
 ```
 
 ### Notes importantes

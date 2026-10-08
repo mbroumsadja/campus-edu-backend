@@ -7,7 +7,7 @@ const downloadLimiter = rateLimit({
   max: 30,                  // 30 téléchargements/heure/IP pour un anonyme
   standardHeaders: true,
   legacyHeaders: false,
-  // Un utilisateur authentifié (JWT valide) n'est pas limité
+  // Un utilisateur authentifié
   skip: (req) => !!req.user,
   handler: (req, res) => error(res, 'Trop de téléchargements. Réessayez dans quelques minutes.', 429),
 });

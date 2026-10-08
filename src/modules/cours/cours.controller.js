@@ -61,7 +61,7 @@ const listerCours = async (req, res, next) => {
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      distinct: true, // Nécessaire avec findAndCountAll + include
+      distinct: true,
     });
 
     return paginated(res, rows, count, page, limit);
@@ -89,7 +89,7 @@ const getCours = async (req, res, next) => {
       return error(res, 'Ce cours n\'est pas disponible.', 403);
     }
 
-    // Incrémenter le compteur de vues (sans bloquer la réponse)
+    // Incrémenter le compteur de vues
     cours.increment('vues').catch(() => { });
 
     return success(res, cours);

@@ -1,5 +1,5 @@
 // src/utils/logger.js
-// Logger structuré avec Winston — remplace console.log partout dans l'app
+// Logger structuré avec Winston
 
 const { createLogger, format, transports } = require('winston');
 const path = require('path');

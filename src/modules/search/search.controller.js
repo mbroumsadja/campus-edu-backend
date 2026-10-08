@@ -5,21 +5,8 @@ const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
 
-// Comparaison insensible à la casse, portable MySQL / PostgreSQL / SQLite
-// (Op.iLike n'existe que sous Postgres — on évite de dépendre du dialecte)
 const toSnakeCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
-// IMPORTANT : columnPath DOIT être qualifié avec un alias de modèle
-// (ex: "Cours.titre", "ue.code", "ue.filiere.nom", "ue.filiere.ecole.ecole").
-// Dès qu'une requête comporte un JOIN (via `include`), une colonne non
-// qualifiée peut correspondre à plusieurs tables en même temps et Postgres
-// renvoie "column reference ... is ambiguous" (ex: nom_fichier_original
-// existe à la fois dans `cours` et `cours_documents`, code existe à la
-// fois dans `ues` et `filieres`, etc.).
-//
-// On refuse donc explicitement tout columnPath non qualifié pour que ce
-// type de bug échoue bruyamment dès le développement plutôt que de
-// planter en production sur une combinaison de filtres particulière.
 const ilike = (columnPath, term) => {
   if (!columnPath.includes('.')) {
     throw new Error(
@@ -77,10 +64,7 @@ const rechercherDocuments = async (req, res, next) => {
     if (semestre) ueWhere.semestre = semestre;
     if (ue) {
       const normalizedUE = String(ue).trim();
-      // Qualifié avec l'alias "ue" (association Cours/Sujet.belongsTo(UE, {as:'ue'}))
-      // car "code" existe aussi bien sur UE que sur Filiere → sans qualification,
-      // Postgres ne saurait pas laquelle des deux colonnes on vise dès que
-      // l'include Filiere est présent dans la même requête.
+    
       ueWhere[Op.or] = [
         ilike('ue.code', normalizedUE),
         ilike('ue.intitule', normalizedUE),
@@ -90,8 +74,6 @@ const rechercherDocuments = async (req, res, next) => {
 
     if (filiere) {
       const normalizedFiliere = String(filiere).trim();
-      // Qualifié avec le chemin complet "ue.filiere" pour matcher l'alias
-      // SQL généré par Sequelize pour l'association imbriquée (ue->filiere).
       filiereWhere[Op.or] = [
         ilike('ue.filiere.code', normalizedFiliere),
         ilike('ue.filiere.nom', normalizedFiliere),
@@ -139,11 +121,6 @@ const rechercherDocuments = async (req, res, next) => {
     };
 
     if (searchTerm) {
-      // "Cours" / "Sujet" = alias racine généré par Sequelize pour le modèle
-      // principal de la requête (FROM "cours" AS "Cours" / FROM "sujets" AS "Sujet").
-      // On qualifie explicitement titre/nomFichierOriginal car nomFichierOriginal
-      // existe aussi sur CoursDocument (association "fichiers"), ce qui rend
-      // la colonne ambiguë dès que cet include est présent.
       coursWhere[Op.or] = [
         ilike('Cours.titre', searchTerm),
         ilike('Cours.nomFichierOriginal', searchTerm),
@@ -164,9 +141,7 @@ const rechercherDocuments = async (req, res, next) => {
       ];
     }
 
-    // "cours" / "sujet" = catégorie de contenu, pas une valeur d'ENUM de format.
-    // On les traite à part pour ne jamais laisser une valeur invalide atteindre
-    // les colonnes ENUM Postgres (ça faisait planter la requête en 500).
+
     const COURS_TYPES = ['pdf', 'video', 'slide', 'autre'];
     const SUJET_TYPES = ['partiel', 'rattrapage', 'terminal', 'tp', 'td'];
 
@@ -182,14 +157,11 @@ const rechercherDocuments = async (req, res, next) => {
         onlySujets = true;
       } else if (COURS_TYPES.includes(normalizedType)) {
         coursWhere.type = normalizedType;
-        onlyCours = true; // ce format n'existe que côté cours
+        onlyCours = true; 
       } else if (SUJET_TYPES.includes(normalizedType)) {
         sujetWhere.type = normalizedType;
-        onlySujets = true; // ce format n'existe que côté sujets
+        onlySujets = true; 
       } else {
-        // Type inconnu de l'ENUM (ex: "docx", "epub", valeur mal formée…)
-        // → on le range dans le fourre-tout "autre" plutôt que de planter.
-        // "autre" n'existe que dans l'ENUM Cours, donc on limite aux cours.
         coursWhere.type = 'autre';
         onlyCours = true;
       }

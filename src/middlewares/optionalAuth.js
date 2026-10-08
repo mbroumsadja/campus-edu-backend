@@ -2,8 +2,6 @@
 const jwt             = require('jsonwebtoken');
 const { Utilisateur } = require('../models');
 
-// Ne bloque jamais la requête : si un token valide est présent,
-// on attache req.user ; sinon req.user reste null (accès public).
 const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 

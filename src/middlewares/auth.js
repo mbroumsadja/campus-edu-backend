@@ -20,7 +20,6 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Vérifier que l'utilisateur existe encore et est actif
-    // Note: on utilise findOne avec cache possible en Phase 2 (Redis)
     const utilisateur = await Utilisateur.findByPk(decoded.id, {
       attributes: ['id', 'matricule', 'nom', 'prenom', 'role', 'statut', 'filiere_id', 'niveau'],
     });
@@ -37,7 +36,6 @@ const verifyToken = async (req, res, next) => {
       return error(res, 'Compte en attente de validation.', 403);
     }
 
-    // Attacher l'utilisateur à la requête pour les middlewares suivants
     req.user = utilisateur;
     next();
 
@@ -55,7 +53,6 @@ const verifyToken = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────
 //  authorize : vérifie que l'utilisateur a le(s) rôle(s) requis
-//  Usage: authorize('admin') ou authorize('admin', 'enseignant')
 // ──────────────────────────────────────────────────────────────────
 const authorize = (...roles) => {
   return (req, res, next) => {
