@@ -193,3 +193,12 @@ Cette API qui expose les ressources d'une plateforme d'archivage pour gérer :
 
 Ceci est un projet realiser grace a l'aide des ainees 
 
+
+## Documentation de l'API
+
+Une documentation interactive (Swagger UI) est disponible une fois le serveur lancé :
+
+- Interface : `GET /api/docs`
+- Spécification OpenAPI brute : `GET /api/docs.json`
+
+La spécification est définie dans `src/docs/openapi.js` — à mettre à jour quand une route change.

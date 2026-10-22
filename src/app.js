@@ -123,6 +123,9 @@ app.use('/api/ecoles', ecolesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/search', require('./modules/search/search.routes'));
 
+// Documentation interactive de l'API (Swagger UI)
+require('./docs/swagger')(app);
+
 // Route de santé (healthcheck)
 app.get('/health', (_req, res) => {
   res.json({
