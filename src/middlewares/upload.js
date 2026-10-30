@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const { put } = require('@vercel/blob');
 const { Readable } = require('stream');
+const { isTrustedFileUrl } = require('../utils/fileUrl');
 
 const router = express.Router();
 
@@ -108,9 +109,14 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
   }
 
   if (/^https?:\/\//i.test(storagePath)) {
+    // Anti-SSRF : on ne relit jamais une URL hors Vercel Blob (CE-01)
+    if (!isTrustedFileUrl(storagePath)) {
+      return res.status(502).json({ error: 'Source de fichier non autorisée.' });
+    }
+
     let remoteResponse;
     try {
-      remoteResponse = await fetch(storagePath);
+      remoteResponse = await fetch(storagePath, { redirect: 'error' });
     } catch (err) {
       return res.status(502).json({ error: 'Impossible de joindre le stockage distant.' });
     }
@@ -129,7 +135,14 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
     return Readable.fromWeb(remoteResponse.body).pipe(res);
   }
 
-  return res.download(path.resolve(storagePath), fileName);
+  // Chemin local : uniquement à l'intérieur du dossier d'uploads
+  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || './uploads');
+  const resolved   = path.resolve(storagePath);
+  if (resolved !== uploadRoot && !resolved.startsWith(uploadRoot + path.sep)) {
+    return res.status(404).json({ error: 'Aucun fichier disponible.' });
+  }
+
+  return res.download(resolved, fileName);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +185,7 @@ const deleteStoredFile = async (storagePath) => {
   if (!storagePath) return;
 
   if (/^https?:\/\//i.test(storagePath)) {
-    // Adapte selon ton provider actif
+    if (!isTrustedFileUrl(storagePath)) return;
     await del(storagePath, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
     return;
   }

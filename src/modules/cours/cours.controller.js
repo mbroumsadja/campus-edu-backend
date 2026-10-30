@@ -4,6 +4,7 @@ const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = requi
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { isTrustedFileUrl } = require('../../utils/fileUrl');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -168,6 +169,11 @@ const creerCours = async (req, res, next) => {
       return error(res, 'Aucun fichier fourni.', 400);
     }
 
+    // Anti-SSRF : les URL fournies par le client doivent pointer vers Vercel Blob
+    if (uploadedFiles.some((f) => f.url && !isTrustedFileUrl(f.url))) {
+      return error(res, 'URL de fichier non autorisée.', 400);
+    }
+
     const { titre, description, type, ue_id, anneAcademique } = req.body;
 
     const ue = await UE.findByPk(ue_id);
@@ -252,6 +258,9 @@ const modifierCours = async (req, res, next) => {
     // Créer des documents supplémentaires si fournis
     const newDocuments = [];
     if (Array.isArray(req.body?.fichiers)) {
+      if (req.body.fichiers.some((f) => f?.url && !isTrustedFileUrl(f.url))) {
+        return error(res, 'URL de fichier non autorisée.', 400);
+      }
       req.body.fichiers.forEach((f) => {
         if (!f?.url) return;
         newDocuments.push({
