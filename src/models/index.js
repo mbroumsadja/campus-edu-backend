@@ -3,6 +3,7 @@
 
 const { sequelize }  = require('../config/database_production');
 const { DataTypes }  = require('sequelize');
+const { cleanFileName } = require('../utils/fileName');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
 // ══════════════════════════════════════════════════════════════════
@@ -215,6 +216,9 @@ const Cours = sequelize.define('Cours', {
   },
 }, {
   tableName: 'cours',
+  hooks: {
+    beforeValidate: (c) => { if (c.nomFichierOriginal) c.nomFichierOriginal = cleanFileName(c.nomFichierOriginal); },
+  },
   indexes: [
     { fields: ['ue_id'] },
     { fields: ['enseignant_id'] },
@@ -246,6 +250,9 @@ const CoursDocument = sequelize.define('CoursDocument', {
   },
 }, {
   tableName: 'cours_documents',
+  hooks: {
+    beforeValidate: (d) => { if (d.nomFichierOriginal) d.nomFichierOriginal = cleanFileName(d.nomFichierOriginal); },
+  },
   indexes: [
     { fields: ['cours_id'] },
   ],
@@ -334,6 +341,7 @@ const Sujet = sequelize.define('Sujet', {
   hooks: {
     // Garde l'ancien contrat (type, annee) et le nouveau (type_epreuve, annee_academique) cohérents
     beforeValidate: (sujet) => {
+      if (sujet.nom_origine) sujet.nom_origine = cleanFileName(sujet.nom_origine);
       if (!sujet.type_epreuve && sujet.type) {
         sujet.type_epreuve = sujet.type === 'rattrapage' ? 'terminal' : sujet.type;
         if (sujet.type === 'rattrapage' && !sujet.session) sujet.session = 'rattrapage';

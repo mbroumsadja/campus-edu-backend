@@ -9,6 +9,7 @@ require('dotenv').config();
 const crypto = require('crypto');
 const { sequelize, Sujet } = require('../src/models');
 const { isTrustedFileUrl } = require('../src/utils/fileUrl');
+const { cleanFileName } = require('../src/utils/fileName');
 
 const dryRun = process.argv.includes('--dry-run');
 
@@ -35,7 +36,7 @@ const digest = async (url) => {
       if (!dryRun) {
         await s.update({
           sha256, taille_octets: size, mime,
-          nom_origine: decodeURIComponent(new URL(s.cheminFichier).pathname.split('/').pop()),
+          nom_origine: cleanFileName(new URL(s.cheminFichier).pathname),
         });
       }
       stats.ok++;

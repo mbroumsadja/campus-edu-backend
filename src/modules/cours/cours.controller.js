@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
+const { cleanFileName } = require('../../utils/fileName');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -159,7 +160,7 @@ const creerCours = async (req, res, next) => {
         if (!f?.url) return;
         uploadedFiles.push({
           url: f.url,
-          originalname: f.nomFichierOriginal || f.pathname || 'document',
+          originalname: cleanFileName(f.nomFichierOriginal || f.pathname) || 'document',
           size: f.tailleFichier || f.size || null,
         });
       });
@@ -202,7 +203,7 @@ const creerCours = async (req, res, next) => {
 const documents = uploadedFiles.map((file) => ({
       cours_id: cours.id,
       cheminFichier: file.path || file.url,
-      nomFichierOriginal: file.originalname,
+      nomFichierOriginal: cleanFileName(file.originalname),
       tailleFichier: file.size,
     }));
     await CoursDocument.bulkCreate(documents);
@@ -266,7 +267,7 @@ const modifierCours = async (req, res, next) => {
         newDocuments.push({
           cours_id: cours.id,
           cheminFichier: f.url,
-          nomFichierOriginal: f.nomFichierOriginal || f.pathname || 'document',
+          nomFichierOriginal: cleanFileName(f.nomFichierOriginal || f.pathname) || 'document',
           tailleFichier: f.tailleFichier || f.size || null,
         });
       });
@@ -277,7 +278,7 @@ const modifierCours = async (req, res, next) => {
         newDocuments.push({
           cours_id: cours.id,
           cheminFichier: file.path || file.url,
-          nomFichierOriginal: file.originalname || file.filename,
+          nomFichierOriginal: cleanFileName(file.originalname || file.filename),
           tailleFichier: file.size || null,
         });
       });

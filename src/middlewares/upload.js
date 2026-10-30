@@ -4,6 +4,7 @@ const path = require('path');
 const { put } = require('@vercel/blob');
 const { Readable } = require('stream');
 const { isTrustedFileUrl } = require('../utils/fileUrl');
+const { contentDisposition, cleanFileName } = require('../utils/fileName');
 
 const router = express.Router();
 
@@ -127,10 +128,7 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
 
     const contentType = remoteResponse.headers.get('content-type') || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName || 'document')}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`
-    );
+    res.setHeader('Content-Disposition', contentDisposition(fileName));
 
     return Readable.fromWeb(remoteResponse.body).pipe(res);
   }
@@ -142,7 +140,7 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
     return res.status(404).json({ error: 'Aucun fichier disponible.' });
   }
 
-  return res.download(resolved, fileName);
+  return res.download(resolved, cleanFileName(fileName) || 'document');
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
