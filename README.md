@@ -193,3 +193,22 @@ Cette API qui expose les ressources d'une plateforme d'archivage pour gérer :
 
 Ceci est un projet realiser grace a l'aide des ainees 
 
+
+## Migrations de base de données (CE-09 à CE-11)
+
+Le schéma ne change plus que par migrations (`sync({ alter | force })` est interdit en production).
+
+```bash
+npm run db:migrate          # appliquer les migrations en attente
+npm run db:migrate:status   # état
+npm run db:migrate:undo     # annuler la dernière
+npm run db:audit            # rapport des lignes orphelines (sujets, cours, UE, filières)
+npm run db:audit -- --fix   # rattache les orphelins à « Non classé / NC-000 » (sauvegardez avant)
+npm run db:backfill-sujets -- --dry-run   # calcule sha256/taille/mime des sujets existants
+```
+
+Ordre conseillé sur une copie ou sur la production : sauvegarde, `db:audit`, `db:audit -- --fix` si besoin,
+`db:migrate`, puis `db:backfill-sujets`.
+
+Variables : `DB_URL`, `DB_SSL=false` (PostgreSQL local). Les tests (`npm test`) exigent une base locale
+ou dont le nom se termine par `_test` : ils vident toutes les tables.

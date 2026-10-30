@@ -96,7 +96,7 @@ const telechargerSujet = async (req, res, next) => {
       ? `corrige_${sujet.titre.replace(/\s/g,'_')}.pdf`
       : `sujet_${sujet.titre.replace(/\s/g,'_')}.pdf`;
 
-    sujet.increment('telechargemements').catch(() => {});
+    await sujet.increment(['telechargemements', 'nb_telechargements']).catch(() => {});
     return downloadStoredFile(res, storagePath, fileName);
   } catch (err) {
     next(err);
@@ -128,7 +128,7 @@ const creerSujet = async (req, res, next) => {
       return error(res, 'URL du corrigé non autorisée.', 400);
     }
 
-    const { titre, type, session, annee, ue_id } = req.body;
+    const { titre, type, type_epreuve, session, annee, annee_academique, ue_id } = req.body;
 
     const ue = await UE.findByPk(ue_id);
     if (!ue) return error(res, 'UE introuvable.', 404);
@@ -136,16 +136,36 @@ const creerSujet = async (req, res, next) => {
     const storedSujetPath = fichierSujet?.path || fichierSujet?.url || null;
     const storedCorrigePath = fichierCorrige?.path || fichierCorrige?.url || null;
 
+    // Empreinte et métadonnées du fichier (calculées côté client après l'upload Blob)
+    const meta = req.body?.sujet || {};
+    const sha256 = meta.sha256 ? String(meta.sha256).toLowerCase() : null;
+    const corrigeSha256 = req.body?.corrige?.sha256 ? String(req.body.corrige.sha256).toLowerCase() : null;
+
+    // Contrôle des doublons : un même fichier ne peut être publié qu'une fois
+    if (sha256) {
+      const doublon = await Sujet.findOne({ where: { sha256 }, attributes: ['id', 'titre'] });
+      if (doublon) {
+        return error(res, `Ce fichier existe déjà (sujet #${doublon.id} : ${doublon.titre}).`, 409);
+      }
+    }
+
     const sujet = await Sujet.create({
       titre,
-      type,
+      type,                                   // ancien contrat (dérivé de type_epreuve si absent)
+      type_epreuve,
       session,
-      annee:         parseInt(annee),
+      annee:         annee ? parseInt(annee, 10) : undefined,
+      annee_academique,
       ue_id,
       enseignant_id: req.user.id,
       cheminFichier: storedSujetPath,
       avecCorrige:   !!fichierCorrige,
       cheminCorrige: storedCorrigePath,
+      taille_octets: meta.tailleFichier || fichierSujet?.size || null,
+      nom_origine:   meta.nomOrigine || fichierSujet?.originalname || null,
+      mime:          meta.mime || fichierSujet?.mimetype || null,
+      sha256,
+      corrige_sha256: corrigeSha256,
       statut:        req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
 
@@ -163,7 +183,7 @@ const modifierSujet = async (req, res, next) => {
     const sujet = await Sujet.findByPk(req.params.id);
     if (!sujet) return error(res, 'Sujet introuvable.', 404);
 
-    const { titre, type, session, annee, ue_id } = req.body;
+    const { titre, type, type_epreuve, session, annee, annee_academique, ue_id } = req.body;
     const updates = {};
 
     if (typeof titre !== 'undefined') {
@@ -171,9 +191,23 @@ const modifierSujet = async (req, res, next) => {
       if (!cleanedTitre) return error(res, 'Titre obligatoire.', 400);
       updates.titre = cleanedTitre;
     }
-    if (typeof type !== 'undefined') updates.type = type;
+    if (typeof type !== 'undefined') {
+      updates.type = type;
+      if (typeof type_epreuve === 'undefined') updates.type_epreuve = type === 'rattrapage' ? 'terminal' : type;
+    }
+    if (typeof type_epreuve !== 'undefined') {
+      updates.type_epreuve = type_epreuve;
+      if (typeof type === 'undefined') updates.type = type_epreuve;
+    }
     if (typeof session !== 'undefined') updates.session = session;
-    if (typeof annee !== 'undefined') updates.annee = parseInt(annee, 10);
+    if (typeof annee !== 'undefined') {
+      updates.annee = parseInt(annee, 10);
+      if (typeof annee_academique === 'undefined') updates.annee_academique = `${updates.annee - 1}-${updates.annee}`;
+    }
+    if (typeof annee_academique !== 'undefined') {
+      updates.annee_academique = annee_academique;
+      if (typeof annee === 'undefined') updates.annee = parseInt(annee_academique.slice(5), 10);
+    }
     if (typeof ue_id !== 'undefined') {
       const ue = await UE.findByPk(ue_id);
       if (!ue) return error(res, 'UE introuvable.', 404);

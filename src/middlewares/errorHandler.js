@@ -25,6 +25,14 @@ const errorHandler = (err, req, res, next) => {
     return res.status(409).json({ success: false, message: `Ce ${field} est déjà utilisé.` });
   }
 
+  // Suppression refusée : des éléments dépendent encore de cette ligne (ON DELETE RESTRICT)
+  if (err.name === 'SequelizeForeignKeyConstraintError' && /is still referenced/.test(err.parent?.detail || '')) {
+    return res.status(409).json({
+      success: false,
+      message: 'Suppression impossible : des documents ou éléments dépendent encore de cette ressource.',
+    });
+  }
+
   // Erreur de clé étrangère
   if (err.name === 'SequelizeForeignKeyConstraintError') {
     return res.status(400).json({ success: false, message: 'Référence invalide.' });

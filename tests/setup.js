@@ -19,7 +19,15 @@ beforeAll(async () => {
     originalError.call(console, ...args);
   };
 
-  const { sequelize, Ecole, Filiere, UE, Utilisateur, Cours, Sujet } = require('../src/models');
+  const { sequelize, Ecole, Filiere, UE, Utilisateur, Cours, CoursDocument, Sujet } = require('../src/models');
+
+  // Garde-fou : sync({ force: true }) efface toutes les tables.
+  // Il ne doit JAMAIS tourner sur la base de production.
+  const dbUrl = process.env.DB_URL || '';
+  const isDisposable = /(localhost|127\.0\.0\.1|%2F|\/tmp)/.test(dbUrl) || /_test(\?|$)/.test(dbUrl);
+  if (!isDisposable) {
+    throw new Error('Tests refusés : DB_URL doit viser une base locale ou se terminer par _test.');
+  }
 
   await sequelize.sync({ force: true });
 
@@ -104,7 +112,7 @@ beforeAll(async () => {
   fs.writeFileSync(sujetFilePath, 'dummy file content');
   fs.writeFileSync(corrigeFilePath, 'dummy file content');
 
-  await Cours.create({
+  const coursTest = await Cours.create({
     titre: 'Cours de test',
     description: 'Description du cours test',
     type: 'pdf',
@@ -115,6 +123,13 @@ beforeAll(async () => {
     anneAcademique: '2025-2026',
     ue_id: ue.id,
     enseignant_id: enseignant.id,
+  });
+
+  await CoursDocument.create({
+    cours_id: coursTest.id,
+    cheminFichier: coursFilePath,
+    nomFichierOriginal: 'cours_test.pdf',
+    tailleFichier: 1024,
   });
 
   await Sujet.create({
