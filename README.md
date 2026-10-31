@@ -255,3 +255,7 @@ La page se met à jour toute seule : un test échoue si une route Express n'est 
 - `Utilisateur` exclut `password` et `refreshToken` par défaut ; `Utilisateur.scope('avecSecrets')` les inclut (login, refresh, changement de mot de passe).
 - Journal d'audit et compteurs sont écrits **avant** l'envoi de la réponse (`src/utils/audit.js`), car une promesse non attendue est coupée en serverless. Une panne du journal n'interrompt jamais la requête.
 - Les IP et user-agents de `audit_logs` et `telechargements` sont effacés après `IP_RETENTION_DAYS` jours (30 par défaut) : planifier `npm run db:purge-ip` chaque jour.
+
+## Index de lecture (CE-14)
+
+Migration `20261030000006` : index `sujets (ue_id, statut, annee_academique DESC, id DESC)`. Sur 30 000 sujets, la liste d'une UE passe de 6,7 ms (tri sur 5 000 lignes) à 0,12 ms (lecture directe de 20 lignes dans l'ordre de l'index). Penser à `npm run db:migrate` au déploiement.

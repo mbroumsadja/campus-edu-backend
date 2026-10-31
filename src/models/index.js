@@ -341,6 +341,8 @@ const Sujet = sequelize.define('Sujet', {
     { fields: ['annee'] },
     { fields: ['statut'] },
     { name: 'sujets_sha256_unique', unique: true, fields: ['sha256'] },
+    // CE-14 : liste par UE (ue_id, statut) triée par année académique décroissante
+    { name: 'sujets_ue_statut_annee_idx', fields: ['ue_id', 'statut', { name: 'annee_academique', order: 'DESC' }, { name: 'id', order: 'DESC' }] },
   ],
   hooks: {
     // Garde l'ancien contrat (type, annee) et le nouveau (type_epreuve, annee_academique) cohérents
