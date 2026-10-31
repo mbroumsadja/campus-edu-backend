@@ -193,3 +193,38 @@ Cette API qui expose les ressources d'une plateforme d'archivage pour gérer :
 
 Ceci est un projet realiser grace a l'aide des ainees 
 
+
+## Migrations de base de données (CE-09 à CE-11)
+
+Le schéma ne change plus que par migrations (`sync({ alter | force })` est interdit en production).
+
+```bash
+npm run db:migrate          # appliquer les migrations en attente
+npm run db:migrate:status   # état
+npm run db:migrate:undo     # annuler la dernière
+npm run db:audit            # rapport des lignes orphelines (sujets, cours, UE, filières)
+npm run db:audit -- --fix   # rattache les orphelins à « Non classé / NC-000 » (sauvegardez avant)
+npm run db:backfill-sujets -- --dry-run   # calcule sha256/taille/mime des sujets existants
+```
+
+Ordre conseillé sur une copie ou sur la production : sauvegarde, `db:audit`, `db:audit -- --fix` si besoin,
+`db:migrate`, puis `db:backfill-sujets`.
+
+Variables : `DB_URL`, `DB_SSL=false` (PostgreSQL local). Les tests (`npm test`) exigent une base locale
+ou dont le nom se termine par `_test` : ils vident toutes les tables.
+
+## Versionnement de l'API (CE-15)
+
+- Version courante : `/api/v1/...`. L'ancien préfixe `/api/...` fonctionne encore mais répond avec les en-têtes
+  `Deprecation: true` et `Link: </api/v1/...>; rel="successor-version"`. Les clients doivent migrer vers `/api/v1`.
+- Contrat OpenAPI : `GET /api/v1/openapi.json`. Un test échoue si une route n'y figure pas (ou s'il y a une route fantôme).
+- Configuration publique pour l'app : `GET /api/v1/config`.
+- L'app mobile envoie `X-App-Version: 1.4.0`. En dessous de `APP_MIN_VERSION`, l'API répond `426` avec
+  `{ code: "APP_UPDATE_REQUIRED", minVersion, updateUrl }`. Sans en-tête, jamais de blocage.
+
+| Variable | Rôle |
+|---|---|
+| `APP_MIN_VERSION` | Version minimale de l'app acceptée (défaut `1.0.0`) |
+| `APP_LATEST_VERSION` | Dernière version publiée |
+| `APP_UPDATE_URL` | Lien de mise à jour (Play Store, APK) |
+| `APP_UPDATE_MESSAGE` | Message affiché dans l'app |

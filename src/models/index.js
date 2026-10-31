@@ -3,6 +3,7 @@
 
 const { sequelize }  = require('../config/database_production');
 const { DataTypes }  = require('sequelize');
+const { cleanFileName } = require('../utils/fileName');
 // ══════════════════════════════════════════════════════════════════
 // MODELE ECOLE
 // ══════════════════════════════════════════════════════════════════
@@ -215,6 +216,9 @@ const Cours = sequelize.define('Cours', {
   },
 }, {
   tableName: 'cours',
+  hooks: {
+    beforeValidate: (c) => { if (c.nomFichierOriginal) c.nomFichierOriginal = cleanFileName(c.nomFichierOriginal); },
+  },
   indexes: [
     { fields: ['ue_id'] },
     { fields: ['enseignant_id'] },
@@ -246,6 +250,9 @@ const CoursDocument = sequelize.define('CoursDocument', {
   },
 }, {
   tableName: 'cours_documents',
+  hooks: {
+    beforeValidate: (d) => { if (d.nomFichierOriginal) d.nomFichierOriginal = cleanFileName(d.nomFichierOriginal); },
+  },
   indexes: [
     { fields: ['cours_id'] },
   ],
@@ -293,7 +300,33 @@ const Sujet = sequelize.define('Sujet', {
     type:         DataTypes.ENUM('en_attente', 'publie', 'archive'),
     defaultValue: 'en_attente',
   },
+  // Ancien compteur (faute de frappe) : conservé pendant la transition, voir migration CE-11
   telechargemements: {
+    type:         DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+
+  // ── Sujet v2 (CE-11) ──────────────────────────────────────────
+  annee_academique: {
+    type:     DataTypes.STRING(9),
+    comment:  'Ex: 2024-2025',
+    validate: { is: { args: /^\d{4}-\d{4}$/, msg: 'Année académique invalide (ex: 2024-2025)' } },
+  },
+  type_epreuve: {
+    type: DataTypes.ENUM('partiel', 'terminal', 'tp', 'td'),
+  },
+  taille_octets: { type: DataTypes.BIGINT },
+  nom_origine:   { type: DataTypes.STRING(255) },
+  mime:          { type: DataTypes.STRING(100) },
+  sha256: {
+    type:     DataTypes.CHAR(64),
+    validate: { is: { args: /^[0-9a-f]{64}$/, msg: 'Empreinte SHA-256 invalide' } },
+  },
+  corrige_sha256: {
+    type:     DataTypes.CHAR(64),
+    validate: { is: { args: /^[0-9a-f]{64}$/, msg: 'Empreinte SHA-256 du corrigé invalide' } },
+  },
+  nb_telechargements: {
     type:         DataTypes.INTEGER,
     defaultValue: 0,
   },
@@ -303,7 +336,21 @@ const Sujet = sequelize.define('Sujet', {
     { fields: ['ue_id'] },
     { fields: ['annee'] },
     { fields: ['statut'] },
+    { name: 'sujets_sha256_unique', unique: true, fields: ['sha256'] },
   ],
+  hooks: {
+    // Garde l'ancien contrat (type, annee) et le nouveau (type_epreuve, annee_academique) cohérents
+    beforeValidate: (sujet) => {
+      if (sujet.nom_origine) sujet.nom_origine = cleanFileName(sujet.nom_origine);
+      if (!sujet.type_epreuve && sujet.type) {
+        sujet.type_epreuve = sujet.type === 'rattrapage' ? 'terminal' : sujet.type;
+        if (sujet.type === 'rattrapage' && !sujet.session) sujet.session = 'rattrapage';
+      }
+      if (!sujet.type && sujet.type_epreuve) sujet.type = sujet.type_epreuve;
+      if (!sujet.annee_academique && sujet.annee) sujet.annee_academique = `${sujet.annee - 1}-${sujet.annee}`;
+      if (!sujet.annee && sujet.annee_academique) sujet.annee = parseInt(sujet.annee_academique.slice(5), 10);
+    },
+  },
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -386,24 +433,24 @@ const AuditLog = sequelize.define('AuditLog', {
 //  ASSOCIATIONS
 // ══════════════════════════════════════════════════════════════════
 // Ecole - Filière
-Ecole.hasMany(Filiere,{foreignKey:'ecole_id', as: 'filiere'});
-Filiere.belongsTo(Ecole, {foreignKey:'ecole_id', as: 'ecole'});
+Ecole.hasMany(Filiere,{foreignKey:{ name:'ecole_id', allowNull:false }, onDelete:'RESTRICT', as: 'filiere'});
+Filiere.belongsTo(Ecole, {foreignKey:{ name:'ecole_id', allowNull:false }, onDelete:'RESTRICT', as: 'ecole'});
 
 // Filière → Utilisateurs (étudiants)
 Filiere.hasMany(Utilisateur, { foreignKey: 'filiere_id', as: 'etudiants' });
 Utilisateur.belongsTo(Filiere, { foreignKey: 'filiere_id', as: 'filiere' });
 
 // Filière → UE
-Filiere.hasMany(UE, { foreignKey: 'filiere_id', as: 'ues' });
-UE.belongsTo(Filiere, { foreignKey: 'filiere_id', as: 'filiere' });
+Filiere.hasMany(UE, { foreignKey: { name: 'filiere_id', allowNull: false }, onDelete: 'RESTRICT', as: 'ues' });
+UE.belongsTo(Filiere, { foreignKey: { name: 'filiere_id', allowNull: false }, onDelete: 'RESTRICT', as: 'filiere' });
 
 // UE → Cours
-UE.hasMany(Cours, { foreignKey: 'ue_id', as: 'cours' });
-Cours.belongsTo(UE, { foreignKey: 'ue_id', as: 'ue' });
+UE.hasMany(Cours, { foreignKey: { name: 'ue_id', allowNull: false }, onDelete: 'RESTRICT', as: 'cours' });
+Cours.belongsTo(UE, { foreignKey: { name: 'ue_id', allowNull: false }, onDelete: 'RESTRICT', as: 'ue' });
 
 // UE → Sujets
-UE.hasMany(Sujet, { foreignKey: 'ue_id', as: 'sujets' });
-Sujet.belongsTo(UE, { foreignKey: 'ue_id', as: 'ue' });
+UE.hasMany(Sujet, { foreignKey: { name: 'ue_id', allowNull: false }, onDelete: 'RESTRICT', as: 'sujets' });
+Sujet.belongsTo(UE, { foreignKey: { name: 'ue_id', allowNull: false }, onDelete: 'RESTRICT', as: 'ue' });
 
 // Enseignant → Cours
 Utilisateur.hasMany(Cours, { foreignKey: 'enseignant_id', as: 'coursEnseignes' });

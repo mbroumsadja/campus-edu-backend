@@ -12,10 +12,10 @@ const sequelize = new Sequelize(process.env.DB_URL,
     dialect: 'postgres',
     protocol: 'postgres',
     dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false 
-      },
+      // SSL requis par défaut (Supabase/Neon) ; DB_SSL=false pour un PostgreSQL local
+      ...(process.env.DB_SSL === 'false'
+        ? {}
+        : { ssl: { require: true, rejectUnauthorized: false } }),
       connectTimeout: 20000,
     },
 
@@ -38,6 +38,15 @@ const sequelize = new Sequelize(process.env.DB_URL,
     },
   }
 );
+
+// Garde-fou (CE-09) : le schéma de production ne change que par migrations.
+const originalSync = sequelize.sync.bind(sequelize);
+sequelize.sync = (options = {}) => {
+  if (process.env.NODE_ENV === 'production' && (options.alter || options.force)) {
+    throw new Error('sync({ alter | force }) est interdit en production : utilisez les migrations (npm run db:migrate).');
+  }
+  return originalSync(options);
+};
 
 const connectDB = async () => {
   try {

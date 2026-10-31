@@ -4,6 +4,7 @@ const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { isTrustedFileUrl } = require('../../utils/fileUrl');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /sujets
@@ -95,7 +96,7 @@ const telechargerSujet = async (req, res, next) => {
       ? `corrige_${sujet.titre.replace(/\s/g,'_')}.pdf`
       : `sujet_${sujet.titre.replace(/\s/g,'_')}.pdf`;
 
-    sujet.increment('telechargemements').catch(() => {});
+    await sujet.increment(['telechargemements', 'nb_telechargements']).catch(() => {});
     return downloadStoredFile(res, storagePath, fileName);
   } catch (err) {
     next(err);
@@ -119,7 +120,15 @@ const creerSujet = async (req, res, next) => {
 
     if (!fichierSujet) return error(res, 'Le fichier sujet est obligatoire.', 400);
 
-    const { titre, type, session, annee, ue_id } = req.body;
+    // Anti-SSRF : les URL fournies par le client doivent pointer vers Vercel Blob
+    if (fichierSujet.url && !isTrustedFileUrl(fichierSujet.url)) {
+      return error(res, 'URL du fichier sujet non autorisée.', 400);
+    }
+    if (fichierCorrige?.url && !isTrustedFileUrl(fichierCorrige.url)) {
+      return error(res, 'URL du corrigé non autorisée.', 400);
+    }
+
+    const { titre, type, type_epreuve, session, annee, annee_academique, ue_id } = req.body;
 
     const ue = await UE.findByPk(ue_id);
     if (!ue) return error(res, 'UE introuvable.', 404);
@@ -127,16 +136,36 @@ const creerSujet = async (req, res, next) => {
     const storedSujetPath = fichierSujet?.path || fichierSujet?.url || null;
     const storedCorrigePath = fichierCorrige?.path || fichierCorrige?.url || null;
 
+    // Empreinte et métadonnées du fichier (calculées côté client après l'upload Blob)
+    const meta = req.body?.sujet || {};
+    const sha256 = meta.sha256 ? String(meta.sha256).toLowerCase() : null;
+    const corrigeSha256 = req.body?.corrige?.sha256 ? String(req.body.corrige.sha256).toLowerCase() : null;
+
+    // Contrôle des doublons : un même fichier ne peut être publié qu'une fois
+    if (sha256) {
+      const doublon = await Sujet.findOne({ where: { sha256 }, attributes: ['id', 'titre'] });
+      if (doublon) {
+        return error(res, `Ce fichier existe déjà (sujet #${doublon.id} : ${doublon.titre}).`, 409);
+      }
+    }
+
     const sujet = await Sujet.create({
       titre,
-      type,
+      type,                                   // ancien contrat (dérivé de type_epreuve si absent)
+      type_epreuve,
       session,
-      annee:         parseInt(annee),
+      annee:         annee ? parseInt(annee, 10) : undefined,
+      annee_academique,
       ue_id,
       enseignant_id: req.user.id,
       cheminFichier: storedSujetPath,
       avecCorrige:   !!fichierCorrige,
       cheminCorrige: storedCorrigePath,
+      taille_octets: meta.tailleFichier || fichierSujet?.size || null,
+      nom_origine:   meta.nomOrigine || fichierSujet?.originalname || null,
+      mime:          meta.mime || fichierSujet?.mimetype || null,
+      sha256,
+      corrige_sha256: corrigeSha256,
       statut:        req.user.role === 'admin' ? 'publie' : 'en_attente',
     });
 
@@ -154,7 +183,7 @@ const modifierSujet = async (req, res, next) => {
     const sujet = await Sujet.findByPk(req.params.id);
     if (!sujet) return error(res, 'Sujet introuvable.', 404);
 
-    const { titre, type, session, annee, ue_id } = req.body;
+    const { titre, type, type_epreuve, session, annee, annee_academique, ue_id } = req.body;
     const updates = {};
 
     if (typeof titre !== 'undefined') {
@@ -162,18 +191,40 @@ const modifierSujet = async (req, res, next) => {
       if (!cleanedTitre) return error(res, 'Titre obligatoire.', 400);
       updates.titre = cleanedTitre;
     }
-    if (typeof type !== 'undefined') updates.type = type;
+    if (typeof type !== 'undefined') {
+      updates.type = type;
+      if (typeof type_epreuve === 'undefined') updates.type_epreuve = type === 'rattrapage' ? 'terminal' : type;
+    }
+    if (typeof type_epreuve !== 'undefined') {
+      updates.type_epreuve = type_epreuve;
+      if (typeof type === 'undefined') updates.type = type_epreuve;
+    }
     if (typeof session !== 'undefined') updates.session = session;
-    if (typeof annee !== 'undefined') updates.annee = parseInt(annee, 10);
+    if (typeof annee !== 'undefined') {
+      updates.annee = parseInt(annee, 10);
+      if (typeof annee_academique === 'undefined') updates.annee_academique = `${updates.annee - 1}-${updates.annee}`;
+    }
+    if (typeof annee_academique !== 'undefined') {
+      updates.annee_academique = annee_academique;
+      if (typeof annee === 'undefined') updates.annee = parseInt(annee_academique.slice(5), 10);
+    }
     if (typeof ue_id !== 'undefined') {
       const ue = await UE.findByPk(ue_id);
       if (!ue) return error(res, 'UE introuvable.', 404);
       updates.ue_id = ue_id;
     }
 
-    // Fichiers uploadés
-    const uploadedSujet = req.files?.sujet?.[0] ?? null;
-    const uploadedCorrige = req.files?.corrige?.[0] ?? null;
+    // Fichiers uploadés (multipart) ou déjà envoyés vers Blob (URL dans le corps)
+    let uploadedSujet = req.files?.sujet?.[0] ?? null;
+    let uploadedCorrige = req.files?.corrige?.[0] ?? null;
+    if (!uploadedSujet && req.body?.sujet?.url) uploadedSujet = { url: req.body.sujet.url };
+    if (!uploadedCorrige && req.body?.corrige?.url) uploadedCorrige = { url: req.body.corrige.url };
+
+    for (const f of [uploadedSujet, uploadedCorrige]) {
+      if (f?.url && !isTrustedFileUrl(f.url)) {
+        return error(res, 'URL de fichier non autorisée.', 400);
+      }
+    }
 
     if (uploadedSujet) {
       // supprimer ancien fichier

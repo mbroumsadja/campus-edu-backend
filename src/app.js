@@ -5,21 +5,18 @@ const helmet       = require('helmet');
 const cors         = require('cors');
 const morgan       = require('morgan');
 const compression  = require('compression');
-const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
 const { connectDB }      = require('./config/database_production');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const { corsOptions }    = require('./config/cors');
+const { globalLimiter, loginLimiter } = require('./middlewares/rateLimiters');
 
-// ── Modules (routes) ─────────────────────────────────────────────
-const authRoutes     = require('./modules/auth/auth.routes');
-const usersRoutes    = require('./modules/users/users.routes');
-const coursRoutes    = require('./modules/cours/cours.routes');
-const sujetsRoutes   = require('./modules/sujets/sujets.routes');
-const filieresRoutes = require('./modules/filieres/filieres.routes');
-const ecolesRoutes   = require('./modules/ecoles/ecoles.routes');
-const uploadRoutes   = require('./modules/upload/upload.routes');
+// ── Routes ───────────────────────────────────────────────────────
+const apiRouter = require('./routes/api');
+const { checkAppVersion } = require('./middlewares/appVersion');
+const openapiRoutes = require('./routes/openapi');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -34,32 +31,8 @@ app.use(helmet({
 }));
 app.set('trust proxy', 1);
 
-// 2. CORS — origines autorisées uniquement
-const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
-];
-
-const isVercelPreview = (origin) => {
-  return /^https:\/\/campus-edu-admin(-[a-z0-9]+)*(-tonusername)?\.vercel\.app$/.test(origin);
-};
-
-app.use(cors({
-  origin: (origin, callback) => {
-    const normalizedOrigin = origin ? origin.trim() : origin;
-
-    if (!normalizedOrigin) return callback(null, true);
-    if (allowedOrigins.includes(normalizedOrigin)) return callback(null, true);
-    if (isVercelPreview(normalizedOrigin)) return callback(null, true);
-    if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalizedOrigin)) return callback(null, true);
-
-    callback(new Error(`CORS bloqué pour l'origine : ${normalizedOrigin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['content-Disposition']
-}));
-
+// 2. CORS — liste explicite d'origines (voir src/config/cors.js)
+app.use(cors(corsOptions));
 
 // 3. Compression gzip — réduit la taille des réponses JSON (~70%)
 app.use(compression());
@@ -81,24 +54,9 @@ app.use(morgan((tokens, req, res) => {
  ].join(' ');
 }, { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
-// 6. Rate limiting global
-const globalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15, // 15 min
-  max:      parseInt(process.env.RATE_LIMIT_MAX) || 1000,
-  standardHeaders: true,
-  legacyHeaders:   false,
-  message: { success: false, message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
-});
-
-// Rate limit plus strict sur le login
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max:      100,
-  message: { success: false, message: 'Trop de tentatives de connexion. Attendez 15 minutes.' },
-});
-
-app.use('/api', globalLimiter);
-app.use('/api/auth/login', loginLimiter);
+// 6. Rate limiting (fenêtre 15 min, store partagé si Upstash est configuré)
+app.use(['/api/v1', '/api'], globalLimiter);
+app.use(['/api/v1/auth/login', '/api/auth/login'], loginLimiter);
 
 // 7. Servir les fichiers uploadés (accès contrôlé via les routes /telecharger)
 //    Note: en production, déléguer ce rôle à Nginx pour de meilleures performances
@@ -114,14 +72,18 @@ app.use((req,res,next)=> {
   next();
 })
 
-app.use('/api/auth',     authRoutes);
-app.use('/api/users',    usersRoutes);
-app.use('/api/cours',    coursRoutes);
-app.use('/api/sujets',   sujetsRoutes);
-app.use('/api/filieres', filieresRoutes);
-app.use('/api/ecoles', ecolesRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/search', require('./modules/search/search.routes'));
+// Contrat OpenAPI (public)
+app.use('/api/v1', openapiRoutes);
+
+// Version courante
+app.use('/api/v1', checkAppVersion, apiRouter);
+
+// Ancien chemin /api : conservé pour les clients existants, marqué comme déprécié (RFC 8594)
+app.use('/api', (req, res, next) => {
+  res.set('Deprecation', 'true');
+  res.set('Link', `</api/v1${req.path}>; rel="successor-version"`);
+  next();
+}, checkAppVersion, apiRouter);
 
 // Route de santé (healthcheck)
 app.get('/health', (_req, res) => {
@@ -131,11 +93,6 @@ app.get('/health', (_req, res) => {
     uptime:    `${Math.floor(process.uptime())}s`,
     env:       process.env.NODE_ENV,
   });
-});
-
-// Route de test CORS
-app.get('/api/ping', (_req, res) => {
-  res.json({ success: true, message: 'Backend Campus edu opérationnel 🚀' });
 });
 
 // ══════════════════════════════════════════════════════════════════
