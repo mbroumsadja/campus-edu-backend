@@ -279,3 +279,7 @@ Chaque connexion crée une session (table `sessions`, refresh token **haché** S
 ## Téléchargement par redirection (CE-18)
 
 Après contrôle du statut, du limiteur et du comptage (fait avant la réponse), les routes de téléchargement répondent **302** vers l'URL Vercel Blob validée (`?download=1`) : aucun octet de fichier ne transite par la fonction. Les clients doivent suivre les redirections (comportement par défaut des navigateurs et d'OkHttp). `DOWNLOAD_MODE=proxy` rétablit l'ancien relais du fichier (nom de fichier lisible garanti), utile en cas de retour arrière.
+
+## Route de téléchargement unique (CE-19)
+
+Route recommandée : `GET /api/v1/search/documents/telecharger?type=sujet|cours&id=…[&document_id=…][&corrige=true]` (publique, 30/h pour un anonyme). `GET /sujets/:id/telecharger` et `GET /cours/:coursId/documents/:documentId/telecharger` restent servies mais répondent `Deprecation: true` et `Link: <nouvelle route>; rel="successor-version"` (`DEPRECATION_SUNSET` ajoute l'en-tête `Sunset`). À supprimer quand plus aucune version d'APK ne les appelle.

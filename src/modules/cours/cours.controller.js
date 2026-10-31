@@ -104,39 +104,6 @@ const getCours = async (req, res, next) => {
 };
 
 // ──────────────────────────────────────────────────────────────────
-//  GET /cours/:id/telecharger
-//  Renvoie le fichier avec un nom propre + incrémente compteur
-// ──────────────────────────────────────────────────────────────────
-const telechargerCours = async (req, res, next) => {
-  try {
-    const cours = await Cours.findByPk(req.params.id, {
-      attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
-    });
-
-    if (!cours) return error(res, 'Cours introuvable.', 404);
-    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
-
-    await bump(cours, 'telechargemements');
-
-    if (req.user) {
-      await record(Telechargement, {
-        utilisateur_id: req.user.id,
-        cours_id: cours.id,
-        ipAddress: req.ip || req.connection?.remoteAddress || null,
-        userAgent: req.get('User-Agent'),
-      });
-    }
-
-    const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
-    const fallback = `cours_${cours.id}${ext}`;
-
-    return await downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ──────────────────────────────────────────────────────────────────
 //  POST /cours — Enseignant ou Admin seulement
 // ──────────────────────────────────────────────────────────────────
 const creerCours = async (req, res, next) => {
@@ -393,4 +360,4 @@ const telechargerDocument = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };
+module.exports = { listerCours, getCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };

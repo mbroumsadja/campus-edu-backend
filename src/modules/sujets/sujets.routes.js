@@ -1,4 +1,5 @@
 // src/modules/sujets/sujets.routes.js
+const { deprecated } = require('../../middlewares/deprecated');
 const router     = require('express').Router();
 const { body }   = require('express-validator');
 const { Sujet } = require('../../models');
@@ -24,8 +25,11 @@ router.use(verifyToken);
 
 router.get('/',           controller.listerSujets);
 router.get('/:id',        controller.getSujet);
-// Télécharger un sujet d'examen (réservé aux utilisateurs authentifiés)
-router.get('/:id/telecharger', downloadLimiter, controller.telechargerSujet);
+// DÉPRÉCIÉ (CE-19) : utiliser GET /search/documents/telecharger?type=sujet&id=… (publique, documentée).
+// Conservé pour les anciennes versions de l'application.
+router.get('/:id/telecharger',
+  deprecated((req) => `/api/v1/search/documents/telecharger?type=sujet&id=${encodeURIComponent(req.params.id)}`),
+  downloadLimiter, controller.telechargerSujet);
 
 router.post('/',
   authorize('enseignant', 'admin'),

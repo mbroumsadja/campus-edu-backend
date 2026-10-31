@@ -1,4 +1,5 @@
 // src/modules/cours/cours.routes.js
+const { deprecated } = require('../../middlewares/deprecated');
 const router = require('express').Router();
 const { body, param } = require('express-validator');
 const { Cours } = require('../../models');
@@ -27,7 +28,9 @@ router.get('/:id',
 );
 
 // Télécharger un cours (gratuit, accessible publiquement sans compte)
+// DÉPRÉCIÉ (CE-19) : utiliser GET /search/documents/telecharger?type=cours&id=…&document_id=…
 router.get('/:coursId/documents/:documentId/telecharger',
+  deprecated((req) => `/api/v1/search/documents/telecharger?type=cours&id=${encodeURIComponent(req.params.coursId)}&document_id=${encodeURIComponent(req.params.documentId)}`),
   optionalAuth,
   downloadLimiter,
   controller.telechargerDocument
