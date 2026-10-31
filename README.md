@@ -212,3 +212,19 @@ Ordre conseillé sur une copie ou sur la production : sauvegarde, `db:audit`, `d
 
 Variables : `DB_URL`, `DB_SSL=false` (PostgreSQL local). Les tests (`npm test`) exigent une base locale
 ou dont le nom se termine par `_test` : ils vident toutes les tables.
+
+## Versionnement de l'API (CE-15)
+
+- Version courante : `/api/v1/...`. L'ancien préfixe `/api/...` fonctionne encore mais répond avec les en-têtes
+  `Deprecation: true` et `Link: </api/v1/...>; rel="successor-version"`. Les clients doivent migrer vers `/api/v1`.
+- Contrat OpenAPI : `GET /api/v1/openapi.json`. Un test échoue si une route n'y figure pas (ou s'il y a une route fantôme).
+- Configuration publique pour l'app : `GET /api/v1/config`.
+- L'app mobile envoie `X-App-Version: 1.4.0`. En dessous de `APP_MIN_VERSION`, l'API répond `426` avec
+  `{ code: "APP_UPDATE_REQUIRED", minVersion, updateUrl }`. Sans en-tête, jamais de blocage.
+
+| Variable | Rôle |
+|---|---|
+| `APP_MIN_VERSION` | Version minimale de l'app acceptée (défaut `1.0.0`) |
+| `APP_LATEST_VERSION` | Dernière version publiée |
+| `APP_UPDATE_URL` | Lien de mise à jour (Play Store, APK) |
+| `APP_UPDATE_MESSAGE` | Message affiché dans l'app |
