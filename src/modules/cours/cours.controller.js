@@ -1,5 +1,6 @@
 // src/modules/cours/cours.controller.js
 
+const { bump, record } = require('../../utils/audit');
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
@@ -93,7 +94,7 @@ const getCours = async (req, res, next) => {
     }
 
     // Incrémenter le compteur de vues
-    cours.increment('vues').catch(() => { });
+    await bump(cours, 'vues');
 
     return success(res, cours);
   } catch (err) {
@@ -114,15 +115,15 @@ const telechargerCours = async (req, res, next) => {
     if (!cours) return error(res, 'Cours introuvable.', 404);
     if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
 
-    cours.increment('telechargemments').catch(() => { }); // vérifie le nom exact du champ en base
+    await bump(cours, 'telechargemements');
 
     if (req.user) {
-      Telechargement.create({
+      await record(Telechargement, {
         utilisateur_id: req.user.id,
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => { });
+      });
     }
 
     const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
@@ -359,15 +360,15 @@ const telechargerDocument = async (req, res, next) => {
     const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: coursId } });
     if (!document) return error(res, 'Document introuvable.', 404);
 
-    cours.increment('telechargemements').catch(() => { });
+    await bump(cours, 'telechargemements');
 
     if (req.user) {
-      Telechargement.create({
+      await record(Telechargement, {
         utilisateur_id: req.user.id,
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => { });
+      });
     }
 
     const ext = (document.nomFichierOriginal || '').includes('.') ? '' : '.pdf';

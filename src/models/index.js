@@ -112,6 +112,10 @@ const Utilisateur = sequelize.define('Utilisateur', {
   },
 }, {
   tableName: 'utilisateurs',
+  // CE-13 : le hash et le refresh token ne sortent jamais par défaut.
+  // Utiliser Utilisateur.scope('avecSecrets') pour login / refresh / changement de mot de passe.
+  defaultScope: { attributes: { exclude: ['password', 'refreshToken'] } },
+  scopes: { avecSecrets: { attributes: { include: ['password', 'refreshToken'] } } },
   indexes: [
     { fields: ['matricule'] },
     { fields: ['role'] },
@@ -415,9 +419,6 @@ const AuditLog = sequelize.define('AuditLog', {
     type:         DataTypes.ENUM('succes', 'echec'),
     defaultValue: 'succes',
   },
-  created_at:{
-    type: DataTypes.DATE
-  }
 }, {
   tableName: 'audit_logs',
   updatedAt:  false, // Un log n'est jamais modifié

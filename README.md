@@ -249,3 +249,9 @@ Au démarrage, l'API avertit dans les logs si `f_unaccent` est absente : lancez 
 - `DOCS_ENABLED=false` désactive les deux pages ; le contrat JSON reste servi.
 
 La page se met à jour toute seule : un test échoue si une route Express n'est pas dans `src/docs/openapi.js`.
+
+## Journaux et rétention (CE-13)
+
+- `Utilisateur` exclut `password` et `refreshToken` par défaut ; `Utilisateur.scope('avecSecrets')` les inclut (login, refresh, changement de mot de passe).
+- Journal d'audit et compteurs sont écrits **avant** l'envoi de la réponse (`src/utils/audit.js`), car une promesse non attendue est coupée en serverless. Une panne du journal n'interrompt jamais la requête.
+- Les IP et user-agents de `audit_logs` et `telechargements` sont effacés après `IP_RETENTION_DAYS` jours (30 par défaut) : planifier `npm run db:purge-ip` chaque jour.

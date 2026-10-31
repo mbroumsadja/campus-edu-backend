@@ -15,6 +15,7 @@
     "db:migrate:undo": "sequelize-cli db:migrate:undo",
     "db:migrate:status": "sequelize-cli db:migrate:status",
     "db:audit": "node scripts/audit-orphelins.js",
+    "db:purge-ip": "node scripts/purge-ip.js",
     "db:backfill-sujets": "node scripts/backfill-sujets-meta.js"
   },
   "dependencies": {

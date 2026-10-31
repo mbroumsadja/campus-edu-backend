@@ -3,7 +3,8 @@
 
 const bcrypt           = require('bcryptjs');
 const jwt              = require('jsonwebtoken');
-const { Utilisateur, AuditLog } = require('../../models');
+const { Utilisateur } = require('../../models');
+const { audit } = require('../../utils/audit');
 const { success, error }        = require('../../utils/apiResponse');
 const logger                    = require('../../utils/logger');
 
@@ -60,7 +61,7 @@ const login = async (req, res, next) => {
     }
 
     // 2. Chercher l'utilisateur en base (source de vérité)
-    const utilisateur = await Utilisateur.findOne({
+    const utilisateur = await Utilisateur.scope('avecSecrets').findOne({
       where: { matricule: matriculeUpper },
       include: [{ association: 'filiere', attributes: ['id', 'nom', 'code'] }],
     });
@@ -68,12 +69,12 @@ const login = async (req, res, next) => {
     // Message volontairement vague pour ne pas révéler si le matricule existe
     if (!utilisateur) {
       // Log silencieux
-      AuditLog.create({
+      await audit({
         action: 'LOGIN_FAILED',
         details: { matricule: matriculeUpper, raison: 'utilisateur_introuvable' },
         ipAddress: ip,
         resultat: 'echec',
-      }).catch(() => {});
+      });
       return error(res, 'Matricule ou mot de passe incorrect.', 401);
     }
 
@@ -88,13 +89,13 @@ const login = async (req, res, next) => {
     // 4. Vérifier le mot de passe
     const passwordValide = await bcrypt.compare(password, utilisateur.password);
     if (!passwordValide) {
-      AuditLog.create({
+      await audit({
         action: 'LOGIN_FAILED',
         utilisateur_id: utilisateur.id,
         details: { matricule: matriculeUpper, raison: 'mauvais_mdp' },
         ipAddress: ip,
         resultat: 'echec',
-      }).catch(() => {});
+      });
       return error(res, 'Matricule ou mot de passe incorrect.', 401);
     }
 
@@ -108,13 +109,13 @@ const login = async (req, res, next) => {
     });
 
     // 7. Journal d'audit (non bloquant)
-    AuditLog.create({
+    await audit({
       action: 'LOGIN_SUCCESS',
       utilisateur_id: utilisateur.id,
       details: { matricule: matriculeUpper, role: utilisateur.role },
       ipAddress: ip,
       userAgent: req.get('User-Agent'),
-    }).catch(() => {});
+    });
 
     logger.info(`✅  Login: ${matriculeUpper} (${utilisateur.role})`);
 
@@ -152,7 +153,7 @@ const refresh = async (req, res, next) => {
       return error(res, 'Refresh token invalide ou expiré.', 401);
     }
 
-    const utilisateur = await Utilisateur.findOne({
+    const utilisateur = await Utilisateur.scope('avecSecrets').findOne({
       where: { id: decoded.id, refreshToken },
     });
 
@@ -175,11 +176,11 @@ const refresh = async (req, res, next) => {
 const logout = async (req, res, next) => {
   try {
     await req.user.update({ refreshToken: null });
-    AuditLog.create({
+    await audit({
       action: 'LOGOUT',
       utilisateur_id: req.user.id,
       ipAddress: req.ip,
-    }).catch(() => {});
+    });
     return success(res, {}, 'Déconnexion réussie');
   } catch (err) {
     next(err);
@@ -215,7 +216,7 @@ const changePassword = async (req, res, next) => {
       return error(res, 'Le nouveau mot de passe doit contenir au moins 8 caractères.', 400);
     }
 
-    const utilisateur = await Utilisateur.findByPk(req.user.id);
+    const utilisateur = await Utilisateur.scope('avecSecrets').findByPk(req.user.id);
     const valide = await bcrypt.compare(ancienPassword, utilisateur.password);
     if (!valide) {
       return error(res, 'Mot de passe actuel incorrect.', 401);

@@ -1,5 +1,6 @@
 // src/modules/search/search.controller.js
 const path = require('path');
+const { bump, record } = require('../../utils/audit');
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = require('../../models');
 const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
@@ -340,15 +341,15 @@ const telechargerDocument = async (req, res, next) => {
         if (!doc) return error(res, 'Aucun document disponible.', 404);
       }
 
-      cours.increment('telechargemements').catch(() => {});
+      await bump(cours, 'telechargemements');
 
       if (req.user) {
-        Telechargement.create({
+        await record(Telechargement, {
           utilisateur_id: req.user.id,
           cours_id: cours.id,
           ipAddress: req.ip || req.connection?.remoteAddress || null,
           userAgent: req.get('User-Agent'),
-        }).catch(() => {});
+        });
       }
 
       const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(doc.nomFichierOriginal || '') || '.pdf'}`;
@@ -376,7 +377,7 @@ const telechargerDocument = async (req, res, next) => {
         ? `corrige_${sujet.titre.replace(/\s+/g, '_')}.pdf`
         : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
 
-      await sujet.increment(['telechargemements', 'nb_telechargements']).catch(() => {});
+      await bump(sujet, ['telechargemements', 'nb_telechargements']);
       return downloadStoredFile(res, storagePath, fileName);
     }
 
