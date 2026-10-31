@@ -239,3 +239,13 @@ La recherche (`/search/documents`, `/cours?search=`, `/sujets?search=`, `/users?
 (« systeme » trouve « Système »), et `%` / `_` saisis par l'utilisateur sont cherchés littéralement.
 Si `pg_trgm` est disponible, des index accélèrent les recherches sur les titres.
 Au démarrage, l'API avertit dans les logs si `f_unaccent` est absente : lancez alors `npm run db:migrate`.
+
+## Documentation de l'API
+
+- `GET /api/v1/docs` : page de documentation générée depuis le contrat OpenAPI (tous les endpoints, paramètres,
+  corps, réponses, exemples curl, filtre, mode sombre). Aucune ressource externe : elle fonctionne hors ligne et avec une CSP stricte.
+- `GET /api/v1/docs/swagger` : Swagger UI pour tester les appels (script chargé depuis jsDelivr).
+- `GET /api/v1/openapi.json` : le contrat brut (Postman, Insomnia, générateurs de client).
+- `DOCS_ENABLED=false` désactive les deux pages ; le contrat JSON reste servi.
+
+La page se met à jour toute seule : un test échoue si une route Express n'est pas dans `src/docs/openapi.js`.
