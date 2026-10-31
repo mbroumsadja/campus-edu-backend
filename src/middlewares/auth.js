@@ -2,7 +2,7 @@
 // Middlewares d'authentification et d'autorisation par rôle
 
 const jwt              = require('jsonwebtoken');
-const { Utilisateur }  = require('../models');
+const { Utilisateur, Session } = require('../models');
 const { error }        = require('../utils/apiResponse');
 
 // ──────────────────────────────────────────────────────────────────
@@ -34,6 +34,13 @@ const verifyToken = async (req, res, next) => {
 
     if (utilisateur.statut === 'en_attente') {
       return error(res, 'Compte en attente de validation.', 403);
+    }
+
+    // CE-12 : l'appareil a-t-il été déconnecté ? (jetons sans sid = anciens jetons, acceptés jusqu'à expiration)
+    if (decoded.sid) {
+      const session = await Session.findOne({ where: { famille_id: decoded.sid, revoked_at: null }, attributes: ['id'] });
+      if (!session) return error(res, 'Session terminée. Veuillez vous reconnecter.', 401);
+      req.sessionId = decoded.sid;
     }
 
     req.user = utilisateur;

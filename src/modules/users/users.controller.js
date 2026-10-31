@@ -3,6 +3,7 @@
 const bcrypt        = require('bcryptjs');
 const { Utilisateur, Filiere } = require('../../models');
 const { audit } = require('../../utils/audit');
+const { revoquer } = require('../auth/sessions');
 const { Op }        = require('sequelize');
 const { containsText } = require('../../utils/searchText');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
@@ -139,7 +140,7 @@ const changerStatut = async (req, res, next) => {
 
     // Si on suspend, on invalide aussi sa session
     if (statut === 'suspendu') {
-      await user.update({ refreshToken: null });
+      await revoquer({ utilisateur_id: user.id }, 'suspension');
     }
 
     await audit({

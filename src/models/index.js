@@ -400,6 +400,29 @@ const Telechargement = sequelize.define('Telechargement', {
 
 
 // ══════════════════════════════════════════════════════════════════
+//  MODÈLE : Session (appareil connecté) — CE-12
+//  Le refresh token n'est JAMAIS stocké en clair : seulement son empreinte SHA-256.
+// ══════════════════════════════════════════════════════════════════
+const Session = sequelize.define('Session', {
+  id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  famille_id: { type: DataTypes.UUID, allowNull: false, comment: 'Une famille = un login ; sert à détecter le rejeu d\'un token déjà renouvelé' },
+  token_hash: { type: DataTypes.CHAR(64), allowNull: false, unique: true },
+  appareil:   { type: DataTypes.STRING(120), comment: 'Nom fourni par le client ou user-agent tronqué' },
+  expires_at: { type: DataTypes.DATE, allowNull: false },
+  last_used_at: { type: DataTypes.DATE },
+  revoked_at: { type: DataTypes.DATE },
+  motif_revocation: { type: DataTypes.ENUM('logout', 'rotation', 'rejeu', 'mot_de_passe', 'suspension', 'limite', 'admin') },
+}, {
+  tableName: 'sessions',
+  indexes: [
+    { fields: ['utilisateur_id', 'revoked_at'] },
+    { fields: ['famille_id'] },
+    { fields: ['expires_at'] },
+  ],
+});
+
+
+// ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Journal d'audit (sécurité)
 // ══════════════════════════════════════════════════════════════════
 const AuditLog = sequelize.define('AuditLog', {
@@ -481,9 +504,12 @@ Telechargement.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utili
 Cours.hasMany(Telechargement, { foreignKey: 'cours_id', as: 'telechargementsHistorique' });
 Telechargement.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
 
+Utilisateur.hasMany(Session, { foreignKey: { name: 'utilisateur_id', allowNull: false }, as: 'sessions', onDelete: 'CASCADE' });
+Session.belongsTo(Utilisateur, { foreignKey: { name: 'utilisateur_id', allowNull: false }, as: 'utilisateur', onDelete: 'CASCADE' });
+
 // Utilisateur → AuditLogs
 Utilisateur.hasMany(AuditLog, { foreignKey: 'utilisateur_id', as: 'logs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
 
 
-module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog };
+module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog, Session };

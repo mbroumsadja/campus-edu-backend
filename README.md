@@ -267,3 +267,11 @@ Migration `20261030000006` : index `sujets (ue_id, statut, annee_academique DESC
 ## Détection de doublons avant upload
 
 `POST /api/v1/upload/verifier-doublon` (enseignant, admin) : `{ "sha256": "…" }` ou `{ "sha256s": ["…"] }` (20 max). Répond, pour chaque empreinte, si le fichier existe déjà (sujet, corrigé ou document de cours) et où. À appeler **avant** l'envoi vers Blob. Les dépôts de sujets et de cours refusent ensuite un doublon avec 409. Migration `20261030000008` (colonne `cours_documents.sha256`).
+
+## Sessions multi-appareils (CE-12)
+
+Chaque connexion crée une session (table `sessions`, refresh token **haché** SHA-256, jamais en clair) ; web et mobile restent connectés en parallèle. Le refresh token est renouvelé à chaque `/auth/refresh` ; rejeter un ancien token (après 10 s de grâce) révoque tout l'appareil (vol présumé).
+- `POST /auth/login` accepte `appareil` (nom affiché) ; `GET /auth/sessions` liste les appareils ; `DELETE /auth/sessions/:id` en déconnecte un ; `POST /auth/logout` coupe l'appareil courant, ou tous avec `{ "tous": true }`.
+- Un changement de mot de passe et une suspension coupent les autres appareils ; `MAX_SESSIONS_PER_USER` (10 par défaut) limite les appareils actifs.
+- Migration `20261030000009` : reprend les anciens refresh tokens (hachés) pour ne déconnecter personne, puis vide `utilisateurs.refresh_token` (colonne à supprimer dans une phase « contracter »).
+- Chaque requête authentifiée vérifie que l'appareil n'a pas été déconnecté (1 requête indexée de plus).

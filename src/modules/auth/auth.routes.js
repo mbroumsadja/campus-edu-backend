@@ -1,5 +1,5 @@
 const router     = require('express').Router();
-const { body }   = require('express-validator');
+const { body, param } = require('express-validator');
 const controller = require('./auth.controller');
 const { validate }     = require('../../middlewares/validate');
 const { verifyToken }  = require('../../middlewares/auth');
@@ -20,6 +20,8 @@ router.post('/refresh', controller.refresh);
 
 // ── Routes protégées ──────────────────────────────────────────────
 router.post('/logout',           verifyToken, controller.logout);
+router.get('/sessions',           verifyToken, controller.listerSessions);
+router.delete('/sessions/:id',    verifyToken, param('id').isUUID().withMessage('Identifiant de session invalide'), validate, controller.revoquerSession);
 router.get('/me',                verifyToken, controller.me);
 router.put('/change-password',   verifyToken, controller.changePassword);
 
