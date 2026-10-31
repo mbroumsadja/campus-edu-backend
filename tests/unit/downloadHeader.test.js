@@ -2,6 +2,8 @@ const express = require('express');
 const request = require('supertest');
 const { Readable } = require('stream');
 
+process.env.DOWNLOAD_MODE = 'proxy'; // ces tests couvrent le mode relais (DOWNLOAD_MODE=proxy)
+
 describe('téléchargement depuis Blob : nom de fichier lisible', () => {
   const build = (name) => {
     jest.resetModules();

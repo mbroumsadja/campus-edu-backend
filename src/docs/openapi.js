@@ -297,7 +297,8 @@ const spec = {
       parameters: [{ name: 'coursId', in: 'path', required: true, schema: { type: 'integer' } },
         { name: 'documentId', in: 'path', required: true, schema: { type: 'integer' } }],
       get: { tags: ['Cours'], summary: 'Télécharger un document d\'un cours',
-        responses: { 200: { description: 'Fichier', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+        responses: { 302: { description: 'Redirection vers le fichier sur le CDN Vercel Blob (le client suit la redirection). Aucun octet ne transite par l\'API.', headers: { Location: { schema: { type: 'string', format: 'uri' } } } },
+          200: { description: 'Fichier (uniquement si DOWNLOAD_MODE=proxy)', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
           ...pick(404, 429) } } },
 
     '/sujets': {
@@ -330,7 +331,8 @@ const spec = {
     '/sujets/{id}/telecharger': { parameters: [idParam],
       get: { tags: ['Sujets'], summary: 'Télécharger un sujet ou son corrigé', security: secured,
         parameters: [{ name: 'corrige', in: 'query', schema: { type: 'boolean' } }],
-        responses: { 200: { description: 'Fichier', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+        responses: { 302: { description: 'Redirection vers le fichier sur le CDN Vercel Blob (le client suit la redirection). Aucun octet ne transite par l\'API.', headers: { Location: { schema: { type: 'string', format: 'uri' } } } },
+          200: { description: 'Fichier (uniquement si DOWNLOAD_MODE=proxy)', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
           ...pick(401, 404, 429) } } },
 
     '/filieres': {
@@ -398,7 +400,8 @@ const spec = {
         { name: 'id', in: 'query', required: true, schema: { type: 'integer' } },
         { name: 'document_id', in: 'query', schema: { type: 'integer' } },
         { name: 'corrige', in: 'query', schema: { type: 'boolean' } }],
-      responses: { 200: { description: 'Fichier', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+      responses: { 302: { description: 'Redirection vers le fichier sur le CDN Vercel Blob (le client suit la redirection). Aucun octet ne transite par l\'API.', headers: { Location: { schema: { type: 'string', format: 'uri' } } } },
+          200: { description: 'Fichier (uniquement si DOWNLOAD_MODE=proxy)', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
         400: err('Paramètres invalides'), ...pick(404, 429) } } },
 
     '/upload/client-token': { post: { tags: ['Upload'], summary: 'Jeton d\'upload direct vers Vercel Blob (enseignant, admin)', security: secured,

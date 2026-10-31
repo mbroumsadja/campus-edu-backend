@@ -115,6 +115,17 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
       return res.status(502).json({ error: 'Source de fichier non autorisée.' });
     }
 
+    // CE-18 : par défaut on redirige (302) vers le CDN Blob, aucun octet ne transite par la fonction.
+    // DOWNLOAD_MODE=proxy rétablit le relais du fichier (retour arrière).
+    if ((process.env.DOWNLOAD_MODE || 'redirect') !== 'proxy') {
+      const cible = new URL(storagePath);
+      cible.searchParams.set('download', '1'); // Vercel Blob : Content-Disposition: attachment
+      // La réponse dépend du comptage et du limiteur : jamais mise en cache
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.redirect(302, cible.toString());
+    }
+
     let remoteResponse;
     try {
       remoteResponse = await fetch(storagePath, { redirect: 'error' });

@@ -275,3 +275,7 @@ Chaque connexion crée une session (table `sessions`, refresh token **haché** S
 - Un changement de mot de passe et une suspension coupent les autres appareils ; `MAX_SESSIONS_PER_USER` (10 par défaut) limite les appareils actifs.
 - Migration `20261030000009` : reprend les anciens refresh tokens (hachés) pour ne déconnecter personne, puis vide `utilisateurs.refresh_token` (colonne à supprimer dans une phase « contracter »).
 - Chaque requête authentifiée vérifie que l'appareil n'a pas été déconnecté (1 requête indexée de plus).
+
+## Téléchargement par redirection (CE-18)
+
+Après contrôle du statut, du limiteur et du comptage (fait avant la réponse), les routes de téléchargement répondent **302** vers l'URL Vercel Blob validée (`?download=1`) : aucun octet de fichier ne transite par la fonction. Les clients doivent suivre les redirections (comportement par défaut des navigateurs et d'OkHttp). `DOWNLOAD_MODE=proxy` rétablit l'ancien relais du fichier (nom de fichier lisible garanti), utile en cas de retour arrière.
