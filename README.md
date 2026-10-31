@@ -259,3 +259,7 @@ La page se met à jour toute seule : un test échoue si une route Express n'est 
 ## Index de lecture (CE-14)
 
 Migration `20261030000006` : index `sujets (ue_id, statut, annee_academique DESC, id DESC)`. Sur 30 000 sujets, la liste d'une UE passe de 6,7 ms (tri sur 5 000 lignes) à 0,12 ms (lecture directe de 20 lignes dans l'ordre de l'index). Penser à `npm run db:migrate` au déploiement.
+
+## Sauvegardes (CE-07)
+
+`scripts/backup-db.sh` (pg_dump vérifié) et `scripts/restore-test.sh` (restauration dans une base jetable) sont planifiés par `.github/workflows/backup.yml`. Procédure, secrets à créer et objectifs RPO 24 h / RTO 4 h : `docs/runbook-sauvegarde.md`.
