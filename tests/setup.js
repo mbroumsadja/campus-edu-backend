@@ -30,6 +30,7 @@ beforeAll(async () => {
   }
 
   await sequelize.sync({ force: true });
+  await require('../src/utils/unaccentSetup').installUnaccent(sequelize); // UNACCENT_MODE=fallback pour tester le repli
 
   const ecole = await Ecole.create({
     ecole: 'Ecole Centrale',

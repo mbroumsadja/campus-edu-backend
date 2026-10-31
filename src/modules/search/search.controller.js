@@ -4,6 +4,7 @@ const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = requ
 const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
+const { containsText } = require('../../utils/searchText');
 
 const toSnakeCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
@@ -18,7 +19,7 @@ const ilike = (columnPath, term) => {
   const parts = columnPath.split('.');
   const attribute = toSnakeCase(parts.pop());
   const dbColumnPath = [...parts, attribute].join('.');
-  return whereFn(fn('LOWER', col(dbColumnPath)), { [Op.like]: `%${term.toLowerCase()}%` });
+  return containsText(dbColumnPath, term);
 };
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents

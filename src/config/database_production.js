@@ -52,6 +52,10 @@ const connectDB = async () => {
   try {
     await sequelize.authenticate();
     logger.info('✅  Connexion PostgreSQL établie avec succès');
+    const [[fn]] = await sequelize.query("SELECT to_regproc('f_unaccent') IS NOT NULL AS ok");
+    if (!fn.ok) {
+      logger.warn('⚠️  Fonction f_unaccent absente : la recherche échouera. Lancez `npm run db:migrate`.');
+    }
   } catch (err) {
     logger.error('❌  Impossible de se connecter à PostgreSQL :', err
     );

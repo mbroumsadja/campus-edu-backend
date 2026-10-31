@@ -6,6 +6,7 @@ const { success, created, error, paginated } = require('../../utils/apiResponse'
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
 const { cleanFileName } = require('../../utils/fileName');
+const { containsText } = require('../../utils/searchText');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -23,7 +24,7 @@ const listerCours = async (req, res, next) => {
     if (ue_id) where.ue_id = ue_id;
     if (type) where.type = type;
     if (annee) where.anneAcademique = annee;
-    if (search) where.titre = { [Op.like]: `%${search}%` };
+    if (search) where[Op.and] = [...(where[Op.and] || []), containsText('Cours.titre', search)];
 
     // Pour un étudiant : restreindre aux cours de sa filière/niveau
     const includeUE = {

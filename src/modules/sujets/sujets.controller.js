@@ -5,6 +5,7 @@ const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
+const { containsText } = require('../../utils/searchText');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /sujets
@@ -21,7 +22,7 @@ const listerSujets = async (req, res, next) => {
     if (type)    where.type    = type;
     if (session) where.session = session;
     if (annee)   where.annee   = parseInt(annee);
-    if (search)  where.titre   = { [Op.like]: `%${search}%` };
+    if (search)  where[Op.and] = [...(where[Op.and] || []), containsText('Sujet.titre', search)];
 
     const includeUE = {
       model:      UE,

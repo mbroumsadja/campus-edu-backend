@@ -228,3 +228,14 @@ ou dont le nom se termine par `_test` : ils vident toutes les tables.
 | `APP_LATEST_VERSION` | Dernière version publiée |
 | `APP_UPDATE_URL` | Lien de mise à jour (Play Store, APK) |
 | `APP_UPDATE_MESSAGE` | Message affiché dans l'app |
+
+## Recherche sans accents (CE-16)
+
+La migration `recherche-sans-accents` crée la fonction SQL `f_unaccent(text)` :
+- avec l'extension PostgreSQL `unaccent` si la base la propose (Supabase, Neon) ;
+- sinon avec une fonction SQL pure équivalente (`UNACCENT_MODE=fallback` pour la forcer).
+
+La recherche (`/search/documents`, `/cours?search=`, `/sujets?search=`, `/users?search=`) ignore la casse et les accents
+(« systeme » trouve « Système »), et `%` / `_` saisis par l'utilisateur sont cherchés littéralement.
+Si `pg_trgm` est disponible, des index accélèrent les recherches sur les titres.
+Au démarrage, l'API avertit dans les logs si `f_unaccent` est absente : lancez alors `npm run db:migrate`.

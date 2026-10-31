@@ -3,6 +3,7 @@
 const bcrypt        = require('bcryptjs');
 const { Utilisateur, Filiere, AuditLog } = require('../../models');
 const { Op }        = require('sequelize');
+const { containsText } = require('../../utils/searchText');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 
 const SALT_ROUNDS = 12;
@@ -21,9 +22,9 @@ const listerUtilisateurs = async (req, res, next) => {
     if (filiere_id) where.filiere_id = filiere_id;
     if (search) {
       where[Op.or] = [
-        { nom:       { [Op.like]: `%${search}%` } },
-        { prenom:    { [Op.like]: `%${search}%` } },
-        { matricule: { [Op.like]: `%${search}%` } },
+        containsText('Utilisateur.nom', search),
+        containsText('Utilisateur.prenom', search),
+        containsText('Utilisateur.matricule', search),
       ];
     }
 
