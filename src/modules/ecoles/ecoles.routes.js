@@ -3,11 +3,12 @@ const { body }   = require('express-validator');
 const controller = require('./ecoles.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
 const optionalAuth = require('../../middlewares/optionalAuth');
+const { cachePublic } = require('../../middlewares/cachePublic');
 const { validate } = require('../../middlewares/validate');
 
 // Lecture : publique (comme /api/search), ne bloque jamais la requête
-router.get('/', optionalAuth, controller.listerEcoles);
-router.get('/:id', optionalAuth, controller.getEcole);
+router.get('/', optionalAuth, cachePublic(), controller.listerEcoles);
+router.get('/:id', optionalAuth, cachePublic(), controller.getEcole);
 
 // Écriture : réservée aux utilisateurs connectés avec le rôle admin
 router.post('/',

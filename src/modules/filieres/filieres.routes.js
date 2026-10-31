@@ -4,12 +4,13 @@ const { body }   = require('express-validator');
 const controller = require('./filieres.controller');
 const { verifyToken, authorize } = require('../../middlewares/auth');
 const optionalAuth = require('../../middlewares/optionalAuth');
+const { cachePublic } = require('../../middlewares/cachePublic');
 const { validate } = require('../../middlewares/validate');
 
 // Lecture : publique (comme /api/search), ne bloque jamais la requête
-router.get('/',     optionalAuth, controller.listerFilieres);
-router.get('/:id',  optionalAuth, controller.getFiliere);
-router.get('/:id/ues', optionalAuth, controller.listerUEs);
+router.get('/',     optionalAuth, cachePublic(), controller.listerFilieres);
+router.get('/:id',  optionalAuth, cachePublic(), controller.getFiliere);
+router.get('/:id/ues', optionalAuth, cachePublic(), controller.listerUEs);
 
 // Écriture : réservée aux utilisateurs connectés avec le rôle admin
 router.post('/',
