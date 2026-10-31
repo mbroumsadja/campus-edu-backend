@@ -1,6 +1,7 @@
 // src/modules/cours/cours.controller.js
 
 const { bump, record } = require('../../utils/audit');
+const { chercherDoublons, estSha256, normaliserSha } = require('../../utils/doublons');
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
@@ -164,6 +165,7 @@ const creerCours = async (req, res, next) => {
           url: f.url,
           originalname: cleanFileName(f.nomFichierOriginal || f.pathname) || 'document',
           size: f.tailleFichier || f.size || null,
+          sha256: estSha256(f.sha256) ? normaliserSha(f.sha256) : null,
         });
       });
     }
@@ -175,6 +177,16 @@ const creerCours = async (req, res, next) => {
     // Anti-SSRF : les URL fournies par le client doivent pointer vers Vercel Blob
     if (uploadedFiles.some((f) => f.url && !isTrustedFileUrl(f.url))) {
       return error(res, 'URL de fichier non autorisée.', 400);
+    }
+
+    // Doublons : un même fichier ne peut pas être déposé deux fois (empreinte fournie par le client)
+    const shas = uploadedFiles.map((f) => f.sha256).filter(Boolean);
+    if (shas.length) {
+      const dejaLa = await chercherDoublons(shas);
+      const premier = Object.values(dejaLa).flat()[0];
+      if (premier) {
+        return error(res, `Ce fichier existe déjà (${premier.type} #${premier.id} : ${premier.titre}).`, 409);
+      }
     }
 
     const { titre, description, type, ue_id, anneAcademique } = req.body;
@@ -207,6 +219,7 @@ const documents = uploadedFiles.map((file) => ({
       cheminFichier: file.path || file.url,
       nomFichierOriginal: cleanFileName(file.originalname),
       tailleFichier: file.size,
+      sha256: file.sha256 || null,
     }));
     await CoursDocument.bulkCreate(documents);
 

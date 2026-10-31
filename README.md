@@ -263,3 +263,7 @@ Migration `20261030000006` : index `sujets (ue_id, statut, annee_academique DESC
 ## Sauvegardes (CE-07)
 
 `scripts/backup-db.sh` (pg_dump vérifié) et `scripts/restore-test.sh` (restauration dans une base jetable) sont planifiés par `.github/workflows/backup.yml`. Procédure, secrets à créer et objectifs RPO 24 h / RTO 4 h : `docs/runbook-sauvegarde.md`.
+
+## Détection de doublons avant upload
+
+`POST /api/v1/upload/verifier-doublon` (enseignant, admin) : `{ "sha256": "…" }` ou `{ "sha256s": ["…"] }` (20 max). Répond, pour chaque empreinte, si le fichier existe déjà (sujet, corrigé ou document de cours) et où. À appeler **avant** l'envoi vers Blob. Les dépôts de sujets et de cours refusent ensuite un doublon avec 409. Migration `20261030000008` (colonne `cours_documents.sha256`).

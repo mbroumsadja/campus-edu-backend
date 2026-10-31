@@ -393,6 +393,22 @@ const spec = {
     '/upload/client-token': { post: { tags: ['Upload'], summary: 'Jeton d\'upload direct vers Vercel Blob (enseignant, admin)', security: secured,
       requestBody: jsonBody({ type: 'object', description: 'Corps envoyé par le SDK @vercel/blob/client.' }),
       responses: { 200: ok('Jeton', { type: 'object' }), 400: err('Refusé'), ...pick(401, 403) } } },
+
+    '/upload/verifier-doublon': { post: { tags: ['Upload'], summary: 'Vérifier si un fichier existe déjà (empreinte SHA-256), avant l\'upload', security: secured,
+      description: 'Envoyer `sha256` (une empreinte) ou `sha256s` (1 à 20). Cherche dans les sujets, les corrigés et les documents de cours. À appeler avant d\'envoyer le fichier vers Blob.',
+      requestBody: jsonBody({ type: 'object', properties: {
+        sha256: { type: 'string', pattern: '^[0-9a-fA-F]{64}$' },
+        sha256s: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string', pattern: '^[0-9a-fA-F]{64}$' } } } }),
+      responses: { 200: ok('Résultat par empreinte', { type: 'object', properties: {
+        success: { type: 'boolean' },
+        data: { type: 'object', properties: {
+          existe: { type: 'boolean' },
+          resultats: { type: 'array', items: { type: 'object', properties: {
+            sha256: { type: 'string' }, existe: { type: 'boolean' },
+            correspondances: { type: 'array', items: { type: 'object', properties: {
+              type: { type: 'string', enum: ['sujet', 'sujet_corrige', 'cours'] },
+              id: { type: 'integer' }, document_id: { type: 'integer' }, titre: { type: 'string' }, statut: { type: 'string' } } } } } } } } } } }),
+        400: err('Empreinte invalide'), ...pick(401, 403) } } },
   },
 };
 

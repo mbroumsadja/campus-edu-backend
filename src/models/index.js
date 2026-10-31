@@ -252,6 +252,10 @@ const CoursDocument = sequelize.define('CoursDocument', {
     type:    DataTypes.BIGINT,
     comment: 'Taille en octets',
   },
+  sha256: {
+    type:     DataTypes.CHAR(64),
+    validate: { is: { args: /^[0-9a-f]{64}$/, msg: 'Empreinte SHA-256 invalide' } },
+  },
 }, {
   tableName: 'cours_documents',
   hooks: {
@@ -259,6 +263,7 @@ const CoursDocument = sequelize.define('CoursDocument', {
   },
   indexes: [
     { fields: ['cours_id'] },
+    { name: 'cours_documents_sha256', fields: ['sha256'] },
   ],
 });
 
