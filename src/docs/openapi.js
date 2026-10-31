@@ -154,6 +154,7 @@ const spec = {
           mime: { type: 'string', nullable: true },
           nb_telechargements: { type: 'integer' },
           ue_id: { type: 'integer' }, enseignant_id: { type: 'integer' },
+          depose_par: { type: 'integer', nullable: true, description: 'Utilisateur ayant déposé le sujet.' },
         },
       },
       SujetFichier: {

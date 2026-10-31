@@ -341,6 +341,7 @@ const Sujet = sequelize.define('Sujet', {
     { fields: ['annee'] },
     { fields: ['statut'] },
     { name: 'sujets_sha256_unique', unique: true, fields: ['sha256'] },
+    { name: 'sujets_depose_par', fields: ['depose_par'] },
     // CE-14 : liste par UE (ue_id, statut) triée par année académique décroissante
     { name: 'sujets_ue_statut_annee_idx', fields: ['ue_id', 'statut', { name: 'annee_academique', order: 'DESC' }, { name: 'id', order: 'DESC' }] },
   ],
@@ -465,6 +466,8 @@ CoursDocument.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
 // Enseignant → Sujets
 Utilisateur.hasMany(Sujet, { foreignKey: 'enseignant_id', as: 'sujetsDeposes' });
 Sujet.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
+// CE-11 : traçabilité du dépôt
+Sujet.belongsTo(Utilisateur, { foreignKey: 'depose_par', as: 'deposant', constraints: true, onDelete: 'SET NULL' });
 
 // Téléchargements utilisateur → Cours
 Utilisateur.hasMany(Telechargement, { foreignKey: 'utilisateur_id', as: 'telechargements' });

@@ -160,6 +160,7 @@ const creerSujet = async (req, res, next) => {
       annee_academique,
       ue_id,
       enseignant_id: req.user.id,
+      depose_par:    req.user.id,
       cheminFichier: storedSujetPath,
       avecCorrige:   !!fichierCorrige,
       cheminCorrige: storedCorrigePath,
