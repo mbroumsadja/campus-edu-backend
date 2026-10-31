@@ -181,7 +181,26 @@ const spec = {
       },
       DocumentRecherche: {
         type: 'object',
-        properties: { id: { type: 'integer' }, type: { type: 'string', enum: ['cours', 'sujet'] }, nom: { type: 'string' } },
+        description: 'Un fichier trouvé : sujet d\'examen (`type_contenu: sujet_examen`) ou fichier d\'un cours (`cours`).',
+        properties: {
+          id: { type: 'integer' },
+          type_contenu: { type: 'string', enum: ['sujet_examen', 'cours'] },
+          nom: { type: 'string' },
+          type: { type: 'string' },
+          type_epreuve: { type: 'string', enum: ['partiel', 'terminal', 'tp', 'td'], description: 'Sujets uniquement.' },
+          session: { type: 'string', enum: ['normale', 'rattrapage'], description: 'Sujets uniquement.' },
+          avec_corrige: { type: 'boolean', description: 'Sujets uniquement.' },
+          annee_academique: { type: 'string', nullable: true, example: '2024-2025' },
+          taille_octets: { type: 'integer', format: 'int64', nullable: true },
+          taille_lisible: { type: 'string', example: '2 Mo' },
+          telechargements: { type: 'integer' },
+          deja_telecharge: { type: 'boolean' },
+          lien_telechargement: { type: 'string' },
+          lien_corrige: { type: 'string', nullable: true, description: 'Sujets avec corrigé uniquement.' },
+          niveau: { type: 'string' }, semestre: { type: 'string' },
+          filiere_code: { type: 'string' }, filiere_nom: { type: 'string' }, ecole_nom: { type: 'string', nullable: true },
+          code_ue: { type: 'string' }, intitule_ue: { type: 'string' },
+        },
         additionalProperties: true,
       },
       Config: {
@@ -336,11 +355,19 @@ const spec = {
       delete: { tags: ['Écoles'], summary: 'Supprimer (admin) — refusé tant qu\'elle a des filières', security: secured,
         responses: { 200: ok('Supprimée', envelope({ type: 'object' })), ...pick(401, 403, 404, 409) } } },
 
-    '/search/documents': { get: { tags: ['Recherche'], summary: 'Rechercher des cours et des sujets (au moins un terme ou un filtre)',
-      parameters: ['nom', 'q', 'niveau', 'semestre', 'ue', 'ue_id', 'filiere', 'filiere_id', 'ecole', 'ecole_id', 'type', 'annee']
-        .map((name) => ({ name, in: 'query', schema: { type: 'string' } })),
+    '/search/documents': { get: { tags: ['Recherche'],
+      summary: 'Rechercher des sujets et des cours (sans accents ni casse) — sujets d\'abord, année académique décroissante',
+      description: 'Fournir un terme (`q` ou `nom`) ou au moins un filtre. Résultats paginés : 20 par défaut, 50 au plus.',
+      parameters: [
+        ...['nom', 'q', 'niveau', 'semestre', 'ue', 'ue_id', 'filiere', 'filiere_id', 'ecole', 'ecole_id', 'type', 'annee']
+          .map((name) => ({ name, in: 'query', schema: { type: 'string' } })),
+        { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+      ],
       responses: { 200: ok('Résultats', envelope({ type: 'object', properties: {
-        documents: { type: 'array', items: ref('DocumentRecherche') }, nombre_resultats: { type: 'integer' } } })),
+        documents: { type: 'array', items: ref('DocumentRecherche') },
+        nombre_resultats: { type: 'integer', description: 'Total, toutes pages confondues.' },
+        pagination: ref('Pagination') } })),
         400: err('Aucun terme ni filtre') } } },
     '/search/documents/telecharger': { get: { tags: ['Recherche'], summary: 'Télécharger un document trouvé (30/h pour un anonyme)',
       parameters: [

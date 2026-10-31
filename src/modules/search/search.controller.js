@@ -46,6 +46,10 @@ const rechercherDocuments = async (req, res, next) => {
       type, annee,
     } = req.query;
 
+    // Pagination (CE-16) : 20 par défaut, 50 au plus
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
     const searchTerm = (nom || q || '').trim();
     const hasFilters = Boolean(
       niveau || semestre || ue || ue_id ||
@@ -189,8 +193,9 @@ const rechercherDocuments = async (req, res, next) => {
     const sujets = onlyCours ? [] : await Sujet.findAll({
       where: sujetWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargemements'],
-      order: [['annee', 'DESC']],
+      attributes: ['id', 'titre', 'type', 'type_epreuve', 'session', 'annee', 'annee_academique',
+        'avecCorrige', 'taille_octets', 'nb_telechargements', 'telechargemements'],
+      order: [['annee', 'DESC'], ['id', 'DESC']],
     });
 
     const documents = [];
@@ -219,7 +224,7 @@ const rechercherDocuments = async (req, res, next) => {
           disponible: true,
           deja_telecharge: downloadedCourseIds.has(c.id),
           telechargements: c.telechargemements,
-          lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
+          lien_telechargement: `/api/v1/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
           taille_octets: doc.tailleFichier,
           taille_lisible: formatTaille(doc.tailleFichier),
           niveau: c.ue.niveau,
@@ -236,17 +241,24 @@ const rechercherDocuments = async (req, res, next) => {
 
     sujets.forEach(s => {
       if (s.ue && s.ue.filiere) {
+        const anneeAcademique = s.annee_academique || (s.annee ? `${s.annee - 1}-${s.annee}` : null);
         documents.push({
           id: s.id,
           type_contenu: 'sujet_examen',
           nom: s.titre,
           type: s.type,
+          type_epreuve: s.type_epreuve || s.type,
+          session: s.session,
           disponible: true,
           deja_telecharge: false,
-          telechargements: s.telechargemements,
-          lien_telechargement: `/api/search/documents/telecharger?type=sujet&id=${s.id}`,
-          taille_octets: null,
-          taille_lisible: 'Non disponible',
+          avec_corrige: !!s.avecCorrige,
+          telechargements: s.nb_telechargements ?? s.telechargemements,
+          lien_telechargement: `/api/v1/search/documents/telecharger?type=sujet&id=${s.id}`,
+          lien_corrige: s.avecCorrige
+            ? `/api/v1/search/documents/telecharger?type=sujet&id=${s.id}&corrige=true`
+            : null,
+          taille_octets: s.taille_octets != null ? Number(s.taille_octets) : null,
+          taille_lisible: s.taille_octets != null ? formatTaille(Number(s.taille_octets)) : 'Non disponible',
           niveau: s.ue.niveau,
           semestre: s.ue.semestre,
           filiere_code: s.ue.filiere.code,
@@ -255,27 +267,40 @@ const rechercherDocuments = async (req, res, next) => {
           code_ue: s.ue.code,
           intitule_ue: s.ue.intitule,
           annee: s.annee,
+          annee_academique: anneeAcademique,
         });
       }
     });
 
+    // Sujets d'examen avant les cours ; année académique décroissante (sans année en dernier) ; plus récent d'abord
     documents.sort((a, b) => {
-      if (a.type_contenu !== b.type_contenu) {
-        return a.type_contenu === 'cours' ? -1 : 1;
-      }
-      return 0;
+      if (a.type_contenu !== b.type_contenu) return a.type_contenu === 'sujet_examen' ? -1 : 1;
+      const ya = a.annee_academique || '';
+      const yb = b.annee_academique || '';
+      if (ya !== yb) return !ya ? 1 : !yb ? -1 : (ya < yb ? 1 : -1);
+      return (b.id || 0) - (a.id || 0);
     });
 
-    if (documents.length === 0) {
+    const total = documents.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const pagination = {
+      total, page, limit, totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
+
+    if (total === 0) {
       return success(res, {
         nombre_resultats: 0,
         documents: [],
+        pagination,
       }, `Aucun document trouvé pour "${nom || q}"`);
     }
 
     return success(res, {
-      nombre_resultats: documents.length,
-      documents,
+      nombre_resultats: total,
+      documents: documents.slice((page - 1) * limit, page * limit),
+      pagination,
     });
   } catch (err) {
     next(err);
