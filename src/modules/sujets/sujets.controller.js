@@ -4,6 +4,7 @@ const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { isTrustedFileUrl } = require('../../utils/fileUrl');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /sujets
@@ -119,6 +120,14 @@ const creerSujet = async (req, res, next) => {
 
     if (!fichierSujet) return error(res, 'Le fichier sujet est obligatoire.', 400);
 
+    // Anti-SSRF : les URL fournies par le client doivent pointer vers Vercel Blob
+    if (fichierSujet.url && !isTrustedFileUrl(fichierSujet.url)) {
+      return error(res, 'URL du fichier sujet non autorisée.', 400);
+    }
+    if (fichierCorrige?.url && !isTrustedFileUrl(fichierCorrige.url)) {
+      return error(res, 'URL du corrigé non autorisée.', 400);
+    }
+
     const { titre, type, session, annee, ue_id } = req.body;
 
     const ue = await UE.findByPk(ue_id);
@@ -171,9 +180,17 @@ const modifierSujet = async (req, res, next) => {
       updates.ue_id = ue_id;
     }
 
-    // Fichiers uploadés
-    const uploadedSujet = req.files?.sujet?.[0] ?? null;
-    const uploadedCorrige = req.files?.corrige?.[0] ?? null;
+    // Fichiers uploadés (multipart) ou déjà envoyés vers Blob (URL dans le corps)
+    let uploadedSujet = req.files?.sujet?.[0] ?? null;
+    let uploadedCorrige = req.files?.corrige?.[0] ?? null;
+    if (!uploadedSujet && req.body?.sujet?.url) uploadedSujet = { url: req.body.sujet.url };
+    if (!uploadedCorrige && req.body?.corrige?.url) uploadedCorrige = { url: req.body.corrige.url };
+
+    for (const f of [uploadedSujet, uploadedCorrige]) {
+      if (f?.url && !isTrustedFileUrl(f.url)) {
+        return error(res, 'URL de fichier non autorisée.', 400);
+      }
+    }
 
     if (uploadedSujet) {
       // supprimer ancien fichier

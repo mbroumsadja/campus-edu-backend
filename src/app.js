@@ -5,12 +5,13 @@ const helmet       = require('helmet');
 const cors         = require('cors');
 const morgan       = require('morgan');
 const compression  = require('compression');
-const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 
 const { connectDB }      = require('./config/database_production');
 const logger             = require('./utils/logger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const { corsOptions }    = require('./config/cors');
+const { globalLimiter, loginLimiter } = require('./middlewares/rateLimiters');
 
 // ── Modules (routes) ─────────────────────────────────────────────
 const authRoutes     = require('./modules/auth/auth.routes');
@@ -34,32 +35,8 @@ app.use(helmet({
 }));
 app.set('trust proxy', 1);
 
-// 2. CORS — origines autorisées uniquement
-const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://campus-edu-admin.vercel.app'
-];
-
-const isVercelPreview = (origin) => {
-  return /^https:\/\/campus-edu-admin(-[a-z0-9]+)*(-tonusername)?\.vercel\.app$/.test(origin);
-};
-
-app.use(cors({
-  origin: (origin, callback) => {
-    const normalizedOrigin = origin ? origin.trim() : origin;
-
-    if (!normalizedOrigin) return callback(null, true);
-    if (allowedOrigins.includes(normalizedOrigin)) return callback(null, true);
-    if (isVercelPreview(normalizedOrigin)) return callback(null, true);
-    if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalizedOrigin)) return callback(null, true);
-
-    callback(new Error(`CORS bloqué pour l'origine : ${normalizedOrigin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['content-Disposition']
-}));
-
+// 2. CORS — liste explicite d'origines (voir src/config/cors.js)
+app.use(cors(corsOptions));
 
 // 3. Compression gzip — réduit la taille des réponses JSON (~70%)
 app.use(compression());
@@ -81,22 +58,7 @@ app.use(morgan((tokens, req, res) => {
  ].join(' ');
 }, { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
-// 6. Rate limiting global
-const globalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15, // 15 min
-  max:      parseInt(process.env.RATE_LIMIT_MAX) || 1000,
-  standardHeaders: true,
-  legacyHeaders:   false,
-  message: { success: false, message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
-});
-
-// Rate limit plus strict sur le login
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max:      100,
-  message: { success: false, message: 'Trop de tentatives de connexion. Attendez 15 minutes.' },
-});
-
+// 6. Rate limiting (fenêtre 15 min, store partagé si Upstash est configuré)
 app.use('/api', globalLimiter);
 app.use('/api/auth/login', loginLimiter);
 
