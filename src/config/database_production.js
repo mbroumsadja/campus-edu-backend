@@ -56,6 +56,13 @@ const connectDB = async () => {
     if (!fn.ok) {
       logger.warn('⚠️  Fonction f_unaccent absente : la recherche échouera. Lancez `npm run db:migrate`.');
     }
+    // Migrations non appliquées : le code attend des colonnes/tables qui n'existent pas encore
+    if (process.env.NODE_ENV !== 'test') {
+      const attente = await require('../utils/migrationsEnAttente').migrationsEnAttente(sequelize);
+      if (attente.length) {
+        logger.warn(`⚠️  ${attente.length} migration(s) en attente (${attente.join(', ')}). Lancez \`npm run db:migrate\` avant de servir du trafic.`);
+      }
+    }
   } catch (err) {
     logger.error('❌  Impossible de se connecter à PostgreSQL :', err
     );
