@@ -60,7 +60,11 @@ app.use(['/api/v1/auth/login', '/api/auth/login'], loginLimiter);
 
 // 7. Servir les fichiers uploadés (accès contrôlé via les routes /telecharger)
 //    Note: en production, déléguer ce rôle à Nginx pour de meilleures performances
-app.use('/uploads', express.static(path.resolve(process.env.UPLOAD_DIR || './uploads')));
+// Fichiers locaux : développement uniquement. En production les fichiers sont sur Vercel Blob ; servir /uploads
+// contournerait le contrôle du statut, la limite de téléchargements et le comptage. SERVE_UPLOADS=true pour le forcer.
+if (process.env.NODE_ENV !== 'production' || process.env.SERVE_UPLOADS === 'true') {
+  app.use('/uploads', express.static(path.resolve(process.env.UPLOAD_DIR || './uploads')));
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  ROUTES

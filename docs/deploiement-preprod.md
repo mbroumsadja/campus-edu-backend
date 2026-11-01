@@ -7,7 +7,7 @@ Branche : `release/v2-preprod` (regroupe CE-01, 02, 06, 09 à 21 + sauvegardes +
 1. **Sauvegarde** de la base (workflow « Sauvegarde base de données » ou `pg_dump`). La migration `…11` supprime des lignes en double de `telechargements`.
 2. **Pré-production = base séparée** (nouveau projet Supabase ou copie restaurée de la prod). Ne jamais tester les migrations d'abord sur la production.
 3. **Audit des orphelins** : `DB_URL=<base> npm run db:audit` (code de sortie 1 s'il y en a). Corriger avec `npm run db:audit -- --fix` après sauvegarde.
-4. **Migrations** : `DB_URL=<base> npm run db:migrate`, puis `npm run db:migrate:status` (tout en `up`, jusqu'à `20261030000011`).
+4. **Migrations** : `DB_URL=<base> npm run db:migrate`, puis `npm run db:migrate:status` (tout en `up`, jusqu'à `20261030000012`).
    - La base doit pouvoir créer `unaccent` et `pg_trgm` (Supabase : oui). Sinon `UNACCENT_MODE=fallback`.
 5. Déployer le code **après** les migrations (le code ancien tolère les nouvelles colonnes ; l'inverse non).
 
@@ -26,6 +26,7 @@ Branche : `release/v2-preprod` (regroupe CE-01, 02, 06, 09 à 21 + sauvegardes +
 | `NAV_CACHE_MAX_AGE`, `NAV_CACHE_S_MAXAGE`, `NAV_CACHE_SWR` | non | 60 / 300 / 600 s |
 | `DOCS_ENABLED` | non | `false` pour masquer `/api/v1/docs` en production |
 | `DEPRECATION_SUNSET` | non | date de retrait des anciennes routes (en-tête `Sunset`) |
+| `SERVE_UPLOADS` | non | `true` pour servir `/uploads` en production (désactivé par défaut : contourne le contrôle du statut et du comptage) |
 | `DB_SSL` | non | `false` uniquement pour une base locale |
 
 ## 3. Tests de pré-production (cocher tout avant la production)
@@ -54,6 +55,8 @@ Branche : `release/v2-preprod` (regroupe CE-01, 02, 06, 09 à 21 + sauvegardes +
 - [ ] `POST /upload/verifier-doublon` : fichier inconnu → `existe:false` ; fichier déjà publié → `existe:true`.
 - [ ] Dépôt d'un sujet avec `sha256` déjà présent : 409.
 - [ ] Nom de fichier sans `%20` en base.
+- [ ] `GET /uploads/<fichier>` répond 404 en production.
+- [ ] Création de deux filières avec le même code dans deux écoles : OK ; dans la même école : 409.
 
 **Demandes et statistiques**
 - [ ] `POST /demandes` (sans compte) puis lecture par l'admin ; 6e envoi en 1 h : 429 ; champ `site_web` rempli : rien enregistré.
@@ -67,6 +70,6 @@ Branche : `release/v2-preprod` (regroupe CE-01, 02, 06, 09 à 21 + sauvegardes +
 **App Android** : connexion, renouvellement, recherche paginée, téléchargement (redirection suivie), formulaire « sujet manquant ».
 
 ## 4. Retour arrière
-- Code : redéployer la version précédente sur Vercel (les migrations sont rétro-compatibles, sauf `…09` et `…11`).
+- Code : redéployer la version précédente sur Vercel (les migrations sont rétro-compatibles, sauf `…09`, `…11` et `…12`).
 - `DOWNLOAD_MODE=proxy` rétablit l'ancien relais des fichiers sans redéployer le code.
 - Base : `npm run db:migrate:undo` (une migration à la fois) ou restauration de la sauvegarde (`docs/runbook-sauvegarde.md`). Les retours arrière de `…09` (sessions) déconnectent tout le monde ; celui de `…11` ne restaure pas les lignes dédoublonnées.

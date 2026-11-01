@@ -31,8 +31,7 @@ const Filiere = sequelize.define('Filiere', {
   code: {
     type:      DataTypes.STRING(10),
     allowNull: false,
-    unique:    true,
-    comment:   'Ex: INFO, MATH, GC',
+    comment:   'Ex: INFO, MATH, GC (unique par école)',
   },
   nom: {
     type:      DataTypes.STRING(100),
@@ -52,7 +51,10 @@ const Filiere = sequelize.define('Filiere', {
     type:         DataTypes.BOOLEAN,
     defaultValue: true,
   },
-}, { tableName: 'filieres' });
+}, {
+  tableName: 'filieres',
+  indexes: [{ name: 'filieres_ecole_code_unique', unique: true, fields: ['ecole_id', 'code'] }],
+});
 
 
 // ══════════════════════════════════════════════════════════════════
