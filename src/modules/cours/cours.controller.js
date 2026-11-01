@@ -1,6 +1,7 @@
 // src/modules/cours/cours.controller.js
 
-const { bump, record } = require('../../utils/audit');
+const { bump } = require('../../utils/audit');
+const { compterTelechargement, memoriserTelechargement } = require('../../utils/stats');
 const { chercherDoublons, estSha256, normaliserSha } = require('../../utils/doublons');
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
@@ -341,9 +342,10 @@ const telechargerDocument = async (req, res, next) => {
     if (!document) return error(res, 'Document introuvable.', 404);
 
     await bump(cours, 'telechargemements');
+    await compterTelechargement('cours', cours.id);
 
     if (req.user) {
-      await record(Telechargement, {
+      await memoriserTelechargement(Telechargement, {
         utilisateur_id: req.user.id,
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,

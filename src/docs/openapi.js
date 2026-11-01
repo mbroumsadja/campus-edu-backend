@@ -52,7 +52,7 @@ const spec = {
       '- Réponses : `{ success, message?, data }`; erreurs : `{ success: false, message, errors? }`.',
   },
   servers: [{ url: '/api/v1' }],
-  tags: ['Auth', 'Utilisateurs', 'Cours', 'Sujets', 'Filières', 'Écoles', 'Recherche', 'Upload', 'Demandes', 'Configuration']
+  tags: ['Auth', 'Utilisateurs', 'Cours', 'Sujets', 'Filières', 'Écoles', 'Recherche', 'Upload', 'Demandes', 'Statistiques', 'Configuration']
     .map((name) => ({ name })),
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -411,6 +411,18 @@ const spec = {
       requestBody: jsonBody({ type: 'object', description: 'Corps envoyé par le SDK @vercel/blob/client.' }),
       responses: { 200: ok('Jeton', { type: 'object' }), 400: err('Refusé'), ...pick(401, 403) } } },
 
+    '/stats': { get: { tags: ['Statistiques'], summary: 'Tableau de bord : téléchargements par jour, documents les plus téléchargés, recherches sans résultat (admin)', security: secured,
+      description: 'Alimenté par des compteurs quotidiens (une ligne par jour et par document), pas par une ligne par téléchargement. Période par défaut : 30 jours ; maximum 366 jours.',
+      parameters: [
+        { name: 'depuis', in: 'query', schema: { type: 'string', format: 'date' } },
+        { name: 'jusqua', in: 'query', schema: { type: 'string', format: 'date' } }],
+      responses: { 200: ok('Statistiques', envelope({ type: 'object', properties: {
+        periode: { type: 'object', properties: { depuis: { type: 'string' }, jusqua: { type: 'string' } } },
+        total_telechargements: { type: 'integer' },
+        par_jour: { type: 'array', items: { type: 'object', properties: { jour: { type: 'string', format: 'date' }, telechargements: { type: 'integer' } } } },
+        top_documents: { type: 'array', items: { type: 'object', properties: { type: { type: 'string', enum: ['cours', 'sujet'] }, id: { type: 'integer' }, titre: { type: 'string', nullable: true }, telechargements: { type: 'integer' } } } },
+        recherches_sans_resultat: { type: 'array', items: { type: 'object', properties: { terme: { type: 'string' }, nb: { type: 'integer' } } } } } })),
+        400: err('Dates invalides'), ...pick(401, 403) } } },
     '/demandes': {
       post: { tags: ['Demandes'], summary: 'Demander un sujet manquant ou signaler un sujet (public, 5 / heure / IP)',
         description: 'Anti-spam : limite par IP, champ piège `site_web` (laisser vide, masqué dans le formulaire), message 10–1000 caractères, 1 lien maximum, doublon sur 24 h ignoré. L\'adresse IP n\'est pas conservée. Connexion facultative.',

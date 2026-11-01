@@ -1,6 +1,7 @@
 // src/modules/search/search.controller.js
 const path = require('path');
-const { bump, record } = require('../../utils/audit');
+const { bump } = require('../../utils/audit');
+const { compterTelechargement, memoriserTelechargement, journaliserRechercheVide } = require('../../utils/stats');
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = require('../../models');
 const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
@@ -291,6 +292,7 @@ const rechercherDocuments = async (req, res, next) => {
     };
 
     if (total === 0) {
+      if (page === 1) await journaliserRechercheVide(searchTerm); // CE-21 : alimente la liste des recherches sans résultat
       return success(res, {
         nombre_resultats: 0,
         documents: [],
@@ -342,9 +344,10 @@ const telechargerDocument = async (req, res, next) => {
       }
 
       await bump(cours, 'telechargemements');
+      await compterTelechargement('cours', cours.id);
 
       if (req.user) {
-        await record(Telechargement, {
+        await memoriserTelechargement(Telechargement, {
           utilisateur_id: req.user.id,
           cours_id: cours.id,
           ipAddress: req.ip || req.connection?.remoteAddress || null,
@@ -378,6 +381,7 @@ const telechargerDocument = async (req, res, next) => {
         : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
 
       await bump(sujet, ['telechargemements', 'nb_telechargements']);
+      await compterTelechargement('sujet', sujet.id);
       return downloadStoredFile(res, storagePath, fileName);
     }
 

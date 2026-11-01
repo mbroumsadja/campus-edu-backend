@@ -2,6 +2,7 @@
 
 const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { bump } = require('../../utils/audit');
+const { compterTelechargement } = require('../../utils/stats');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
@@ -99,6 +100,7 @@ const telechargerSujet = async (req, res, next) => {
       : `sujet_${sujet.titre.replace(/\s/g,'_')}.pdf`;
 
     await bump(sujet, ['telechargemements', 'nb_telechargements']);
+    await compterTelechargement('sujet', sujet.id);
     return downloadStoredFile(res, storagePath, fileName);
   } catch (err) {
     next(err);

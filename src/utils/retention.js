@@ -24,4 +24,13 @@ const purgeIpAddresses = async (sequelize, days = retentionDays()) => {
   return result;
 };
 
-module.exports = { purgeIpAddresses, retentionDays };
+// Termes recherchés sans résultat : conservés STATS_RETENTION_DAYS jours (180 par défaut)
+const purgeRecherchesVides = async (sequelize, days = parseInt(process.env.STATS_RETENTION_DAYS, 10) || 180) => {
+  const [, meta] = await sequelize.query(
+    "DELETE FROM recherches_vides WHERE jour < (now() AT TIME ZONE 'UTC')::date - :days::int",
+    { replacements: { days }, type: QueryTypes.RAW }
+  );
+  return meta?.rowCount ?? 0;
+};
+
+module.exports = { purgeIpAddresses, purgeRecherchesVides, retentionDays };

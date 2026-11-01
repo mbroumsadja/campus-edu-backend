@@ -287,3 +287,7 @@ Route recommandée : `GET /api/v1/search/documents/telecharger?type=sujet|cours&
 ## Demandes de sujet manquant et signalements (CE-20)
 
 `POST /api/v1/demandes` (public, connexion facultative) : `{ type: "sujet_manquant" | "signalement", message (10–1000), contact?, ue_id | sujet_id, site_web }`. Anti-spam : 5 envois / heure / IP (`DEMANDE_RATE_LIMIT_MAX`), champ piège `site_web` (à masquer dans le formulaire et laisser vide : rempli, la demande est ignorée en silence), 1 lien maximum, doublon (même auteur, même cible, 24 h) ignoré. L'IP n'est jamais stockée (empreinte HMAC). Admin : `GET /demandes` (filtres `statut`, `type`) et `PATCH /demandes/:id/statut`. Migration `20261030000010`.
+
+## Statistiques quotidiennes (CE-21)
+
+Chaque téléchargement fait un UPSERT atomique dans `stats_quotidiennes (jour, type, cible_id)` : une ligne par jour et par document, quel que soit le trafic. L'historique par utilisateur (`telechargements`) est limité à une ligne par (utilisateur, cours). Les recherches sans résultat sont comptées par jour dans `recherches_vides` (terme normalisé, 100 caractères max). `GET /api/v1/stats?depuis=&jusqua=` (admin) renvoie total, courbe par jour, 10 documents les plus téléchargés et 20 termes sans résultat. `npm run db:purge-ip` supprime aussi les termes de plus de `STATS_RETENTION_DAYS` jours (180 par défaut). Migration `20261030000011` : reprend l'historique existant, agrégé par jour (le retour arrière ne restaure pas les lignes dédoublonnées).

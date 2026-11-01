@@ -3,8 +3,12 @@
 // À planifier chaque jour (cron Vercel, GitHub Actions ou tâche Render) : npm run db:purge-ip
 require('dotenv').config();
 const { sequelize } = require('../src/models');
-const { purgeIpAddresses, retentionDays } = require('../src/utils/retention');
+const { purgeIpAddresses, purgeRecherchesVides, retentionDays } = require('../src/utils/retention');
 
 purgeIpAddresses(sequelize)
-  .then((r) => { console.log(`Rétention ${retentionDays()} j :`, JSON.stringify(r)); return sequelize.close(); })
+  .then(async (r) => {
+    console.log(`Rétention ${retentionDays()} j :`, JSON.stringify(r));
+    console.log('Recherches sans résultat purgées :', await purgeRecherchesVides(sequelize));
+    return sequelize.close();
+  })
   .catch((e) => { console.error(e.message); process.exit(1); });

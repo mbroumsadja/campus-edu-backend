@@ -395,8 +395,29 @@ const Telechargement = sequelize.define('Telechargement', {
   indexes: [
     { fields: ['utilisateur_id'] },
     { fields: ['cours_id'] },
+    // CE-21 : une seule ligne par (utilisateur, cours) ; le volume par jour est dans stats_quotidiennes
+    { name: 'telechargements_utilisateur_cours_unique', unique: true, fields: ['utilisateur_id', 'cours_id'] },
   ],
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  MODÈLES : statistiques agrégées par jour (CE-21)
+// ══════════════════════════════════════════════════════════════════
+const StatQuotidienne = sequelize.define('StatQuotidienne', {
+  jour:     { type: DataTypes.DATEONLY, primaryKey: true },
+  type:     { type: DataTypes.ENUM('cours', 'sujet'), primaryKey: true },
+  cible_id: { type: DataTypes.INTEGER, primaryKey: true },
+  telechargements: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+}, {
+  tableName: 'stats_quotidiennes', timestamps: false,
+  indexes: [{ name: 'stats_quotidiennes_cible', fields: ['type', 'cible_id'] }],
+});
+
+const RechercheVide = sequelize.define('RechercheVide', {
+  jour:  { type: DataTypes.DATEONLY, primaryKey: true },
+  terme: { type: DataTypes.STRING(100), primaryKey: true },
+  nb:    { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+}, { tableName: 'recherches_vides', timestamps: false });
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -541,4 +562,4 @@ Utilisateur.hasMany(AuditLog, { foreignKey: 'utilisateur_id', as: 'logs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
 
 
-module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog, Session, Demande };
+module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog, Session, Demande, StatQuotidienne, RechercheVide };
