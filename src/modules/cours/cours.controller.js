@@ -1,9 +1,15 @@
 // src/modules/cours/cours.controller.js
 
+const { bump } = require('../../utils/audit');
+const { compterTelechargement, memoriserTelechargement } = require('../../utils/stats');
+const { chercherDoublons, estSha256, normaliserSha } = require('../../utils/doublons');
 const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { isTrustedFileUrl } = require('../../utils/fileUrl');
+const { cleanFileName } = require('../../utils/fileName');
+const { containsText } = require('../../utils/searchText');
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -21,7 +27,7 @@ const listerCours = async (req, res, next) => {
     if (ue_id) where.ue_id = ue_id;
     if (type) where.type = type;
     if (annee) where.anneAcademique = annee;
-    if (search) where.titre = { [Op.like]: `%${search}%` };
+    if (search) where[Op.and] = [...(where[Op.and] || []), containsText('Cours.titre', search)];
 
     // Pour un étudiant : restreindre aux cours de sa filière/niveau
     const includeUE = {
@@ -90,42 +96,9 @@ const getCours = async (req, res, next) => {
     }
 
     // Incrémenter le compteur de vues
-    cours.increment('vues').catch(() => { });
+    await bump(cours, 'vues');
 
     return success(res, cours);
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ──────────────────────────────────────────────────────────────────
-//  GET /cours/:id/telecharger
-//  Renvoie le fichier avec un nom propre + incrémente compteur
-// ──────────────────────────────────────────────────────────────────
-const telechargerCours = async (req, res, next) => {
-  try {
-    const cours = await Cours.findByPk(req.params.id, {
-      attributes: ['id', 'titre', 'cheminFichier', 'nomFichierOriginal', 'statut'],
-    });
-
-    if (!cours) return error(res, 'Cours introuvable.', 404);
-    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
-
-    cours.increment('telechargemments').catch(() => { }); // vérifie le nom exact du champ en base
-
-    if (req.user) {
-      Telechargement.create({
-        utilisateur_id: req.user.id,
-        cours_id: cours.id,
-        ipAddress: req.ip || req.connection?.remoteAddress || null,
-        userAgent: req.get('User-Agent'),
-      }).catch(() => { });
-    }
-
-    const ext = (cours.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
-    const fallback = `cours_${cours.id}${ext}`;
-
-    return await downloadStoredFile(res, cours.cheminFichier, cours.nomFichierOriginal || fallback);
   } catch (err) {
     next(err);
   }
@@ -158,14 +131,30 @@ const creerCours = async (req, res, next) => {
         if (!f?.url) return;
         uploadedFiles.push({
           url: f.url,
-          originalname: f.nomFichierOriginal || f.pathname || 'document',
+          originalname: cleanFileName(f.nomFichierOriginal || f.pathname) || 'document',
           size: f.tailleFichier || f.size || null,
+          sha256: estSha256(f.sha256) ? normaliserSha(f.sha256) : null,
         });
       });
     }
 
     if (uploadedFiles.length === 0) {
       return error(res, 'Aucun fichier fourni.', 400);
+    }
+
+    // Anti-SSRF : les URL fournies par le client doivent pointer vers Vercel Blob
+    if (uploadedFiles.some((f) => f.url && !isTrustedFileUrl(f.url))) {
+      return error(res, 'URL de fichier non autorisée.', 400);
+    }
+
+    // Doublons : un même fichier ne peut pas être déposé deux fois (empreinte fournie par le client)
+    const shas = uploadedFiles.map((f) => f.sha256).filter(Boolean);
+    if (shas.length) {
+      const dejaLa = await chercherDoublons(shas);
+      const premier = Object.values(dejaLa).flat()[0];
+      if (premier) {
+        return error(res, `Ce fichier existe déjà (${premier.type} #${premier.id} : ${premier.titre}).`, 409);
+      }
     }
 
     const { titre, description, type, ue_id, anneAcademique } = req.body;
@@ -196,8 +185,9 @@ const creerCours = async (req, res, next) => {
 const documents = uploadedFiles.map((file) => ({
       cours_id: cours.id,
       cheminFichier: file.path || file.url,
-      nomFichierOriginal: file.originalname,
+      nomFichierOriginal: cleanFileName(file.originalname),
       tailleFichier: file.size,
+      sha256: file.sha256 || null,
     }));
     await CoursDocument.bulkCreate(documents);
 
@@ -252,12 +242,15 @@ const modifierCours = async (req, res, next) => {
     // Créer des documents supplémentaires si fournis
     const newDocuments = [];
     if (Array.isArray(req.body?.fichiers)) {
+      if (req.body.fichiers.some((f) => f?.url && !isTrustedFileUrl(f.url))) {
+        return error(res, 'URL de fichier non autorisée.', 400);
+      }
       req.body.fichiers.forEach((f) => {
         if (!f?.url) return;
         newDocuments.push({
           cours_id: cours.id,
           cheminFichier: f.url,
-          nomFichierOriginal: f.nomFichierOriginal || f.pathname || 'document',
+          nomFichierOriginal: cleanFileName(f.nomFichierOriginal || f.pathname) || 'document',
           tailleFichier: f.tailleFichier || f.size || null,
         });
       });
@@ -268,7 +261,7 @@ const modifierCours = async (req, res, next) => {
         newDocuments.push({
           cours_id: cours.id,
           cheminFichier: file.path || file.url,
-          nomFichierOriginal: file.originalname || file.filename,
+          nomFichierOriginal: cleanFileName(file.originalname || file.filename),
           tailleFichier: file.size || null,
         });
       });
@@ -348,15 +341,16 @@ const telechargerDocument = async (req, res, next) => {
     const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: coursId } });
     if (!document) return error(res, 'Document introuvable.', 404);
 
-    cours.increment('telechargemements').catch(() => { });
+    await bump(cours, 'telechargemements');
+    await compterTelechargement('cours', cours.id);
 
     if (req.user) {
-      Telechargement.create({
+      await memoriserTelechargement(Telechargement, {
         utilisateur_id: req.user.id,
         cours_id: cours.id,
         ipAddress: req.ip || req.connection?.remoteAddress || null,
         userAgent: req.get('User-Agent'),
-      }).catch(() => { });
+      });
     }
 
     const ext = (document.nomFichierOriginal || '').includes('.') ? '' : '.pdf';
@@ -368,4 +362,4 @@ const telechargerDocument = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };
+module.exports = { listerCours, getCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };

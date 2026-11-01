@@ -1,8 +1,11 @@
 // src/modules/users/users.controller.js
 
 const bcrypt        = require('bcryptjs');
-const { Utilisateur, Filiere, AuditLog } = require('../../models');
+const { Utilisateur, Filiere } = require('../../models');
+const { audit } = require('../../utils/audit');
+const { revoquer } = require('../auth/sessions');
 const { Op }        = require('sequelize');
+const { containsText } = require('../../utils/searchText');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 
 const SALT_ROUNDS = 12;
@@ -21,9 +24,9 @@ const listerUtilisateurs = async (req, res, next) => {
     if (filiere_id) where.filiere_id = filiere_id;
     if (search) {
       where[Op.or] = [
-        { nom:       { [Op.like]: `%${search}%` } },
-        { prenom:    { [Op.like]: `%${search}%` } },
-        { matricule: { [Op.like]: `%${search}%` } },
+        containsText('Utilisateur.nom', search),
+        containsText('Utilisateur.prenom', search),
+        containsText('Utilisateur.matricule', search),
       ];
     }
 
@@ -76,7 +79,7 @@ const creerUtilisateur = async (req, res, next) => {
       statut:   'actif',
     });
 
-    await AuditLog.create({
+    await audit({
       action:          'CREATE_USER',
       utilisateur_id:  req.user.id,
       details:         { cible: user.matricule, role: user.role },
@@ -110,7 +113,7 @@ const modifierUtilisateur = async (req, res, next) => {
 
     await user.update(updates);
 
-    await AuditLog.create({
+    await audit({
       action:         'UPDATE_USER',
       utilisateur_id: req.user.id,
       details:        { cible: user.matricule, modifications: Object.keys(updates) },
@@ -137,10 +140,10 @@ const changerStatut = async (req, res, next) => {
 
     // Si on suspend, on invalide aussi sa session
     if (statut === 'suspendu') {
-      await user.update({ refreshToken: null });
+      await revoquer({ utilisateur_id: user.id }, 'suspension');
     }
 
-    await AuditLog.create({
+    await audit({
       action:         statut === 'actif' ? 'ACTIVATE_USER' : 'SUSPEND_USER',
       utilisateur_id: req.user.id,
       details:        { cible: user.matricule, nouveauStatut: statut },
@@ -166,7 +169,7 @@ const supprimerUtilisateur = async (req, res, next) => {
       return error(res, 'Impossible de supprimer votre propre compte.', 400);
     }
 
-    await AuditLog.create({
+    await audit({
       action:         'DELETE_USER',
       utilisateur_id: req.user.id,
       details:        { cible: user.matricule },

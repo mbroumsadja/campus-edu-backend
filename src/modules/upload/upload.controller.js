@@ -3,7 +3,8 @@
 //
 
 const { handleUpload } = require('@vercel/blob/client');
-const { error } = require('../../utils/apiResponse');
+const { error, success } = require('../../utils/apiResponse');
+const { chercherDoublons, normaliserSha } = require('../../utils/doublons');
 
 const ALLOWED_CONTENT_TYPES = [
   'application/pdf',
@@ -46,3 +47,21 @@ const genererJetonClient = async (req, res) => {
 };
 
 module.exports = { genererJetonClient };
+
+
+// POST /upload/verifier-doublon — { sha256 } ou { sha256s: [...] } (20 max)
+// À appeler AVANT l'envoi vers Blob : évite de téléverser un fichier déjà présent.
+const verifierDoublon = async (req, res, next) => {
+  try {
+    const demandes = req.body.sha256s || [req.body.sha256];
+    const resultat = await chercherDoublons(demandes);
+    const resultats = demandes.map(normaliserSha).map((sha) => ({
+      sha256: sha,
+      existe: resultat[sha].length > 0,
+      correspondances: resultat[sha],
+    }));
+    return success(res, { existe: resultats.some((r) => r.existe), resultats });
+  } catch (err) { next(err); }
+};
+
+module.exports.verifierDoublon = verifierDoublon;

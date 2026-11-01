@@ -193,3 +193,101 @@ Cette API qui expose les ressources d'une plateforme d'archivage pour gérer :
 
 Ceci est un projet realiser grace a l'aide des ainees 
 
+
+## Migrations de base de données (CE-09 à CE-11)
+
+Le schéma ne change plus que par migrations (`sync({ alter | force })` est interdit en production).
+
+```bash
+npm run db:migrate          # appliquer les migrations en attente
+npm run db:migrate:status   # état
+npm run db:migrate:undo     # annuler la dernière
+npm run db:audit            # rapport des lignes orphelines (sujets, cours, UE, filières)
+npm run db:audit -- --fix   # rattache les orphelins à « Non classé / NC-000 » (sauvegardez avant)
+npm run db:backfill-sujets -- --dry-run   # calcule sha256/taille/mime des sujets existants
+```
+
+Ordre conseillé sur une copie ou sur la production : sauvegarde, `db:audit`, `db:audit -- --fix` si besoin,
+`db:migrate`, puis `db:backfill-sujets`.
+
+Variables : `DB_URL`, `DB_SSL=false` (PostgreSQL local). Les tests (`npm test`) exigent une base locale
+ou dont le nom se termine par `_test` : ils vident toutes les tables.
+
+## Versionnement de l'API (CE-15)
+
+- Version courante : `/api/v1/...`. L'ancien préfixe `/api/...` fonctionne encore mais répond avec les en-têtes
+  `Deprecation: true` et `Link: </api/v1/...>; rel="successor-version"`. Les clients doivent migrer vers `/api/v1`.
+- Contrat OpenAPI : `GET /api/v1/openapi.json`. Un test échoue si une route n'y figure pas (ou s'il y a une route fantôme).
+- Configuration publique pour l'app : `GET /api/v1/config`.
+- L'app mobile envoie `X-App-Version: 1.4.0`. En dessous de `APP_MIN_VERSION`, l'API répond `426` avec
+  `{ code: "APP_UPDATE_REQUIRED", minVersion, updateUrl }`. Sans en-tête, jamais de blocage.
+
+| Variable | Rôle |
+|---|---|
+| `APP_MIN_VERSION` | Version minimale de l'app acceptée (défaut `1.0.0`) |
+| `APP_LATEST_VERSION` | Dernière version publiée |
+| `APP_UPDATE_URL` | Lien de mise à jour (Play Store, APK) |
+| `APP_UPDATE_MESSAGE` | Message affiché dans l'app |
+
+## Recherche sans accents (CE-16)
+
+La migration `recherche-sans-accents` crée la fonction SQL `f_unaccent(text)` :
+- avec l'extension PostgreSQL `unaccent` si la base la propose (Supabase, Neon) ;
+- sinon avec une fonction SQL pure équivalente (`UNACCENT_MODE=fallback` pour la forcer).
+
+La recherche (`/search/documents`, `/cours?search=`, `/sujets?search=`, `/users?search=`) ignore la casse et les accents
+(« systeme » trouve « Système »), et `%` / `_` saisis par l'utilisateur sont cherchés littéralement.
+Si `pg_trgm` est disponible, des index accélèrent les recherches sur les titres.
+Au démarrage, l'API avertit dans les logs si `f_unaccent` est absente : lancez alors `npm run db:migrate`.
+
+## Documentation de l'API
+
+- `GET /api/v1/docs` : page de documentation générée depuis le contrat OpenAPI (tous les endpoints, paramètres,
+  corps, réponses, exemples curl, filtre, mode sombre). Aucune ressource externe : elle fonctionne hors ligne et avec une CSP stricte.
+- `GET /api/v1/docs/swagger` : Swagger UI pour tester les appels (script chargé depuis jsDelivr).
+- `GET /api/v1/openapi.json` : le contrat brut (Postman, Insomnia, générateurs de client).
+- `DOCS_ENABLED=false` désactive les deux pages ; le contrat JSON reste servi.
+
+La page se met à jour toute seule : un test échoue si une route Express n'est pas dans `src/docs/openapi.js`.
+
+## Journaux et rétention (CE-13)
+
+- `Utilisateur` exclut `password` et `refreshToken` par défaut ; `Utilisateur.scope('avecSecrets')` les inclut (login, refresh, changement de mot de passe).
+- Journal d'audit et compteurs sont écrits **avant** l'envoi de la réponse (`src/utils/audit.js`), car une promesse non attendue est coupée en serverless. Une panne du journal n'interrompt jamais la requête.
+- Les IP et user-agents de `audit_logs` et `telechargements` sont effacés après `IP_RETENTION_DAYS` jours (30 par défaut) : planifier `npm run db:purge-ip` chaque jour.
+
+## Index de lecture (CE-14)
+
+Migration `20261030000006` : index `sujets (ue_id, statut, annee_academique DESC, id DESC)`. Sur 30 000 sujets, la liste d'une UE passe de 6,7 ms (tri sur 5 000 lignes) à 0,12 ms (lecture directe de 20 lignes dans l'ordre de l'index). Penser à `npm run db:migrate` au déploiement.
+
+## Sauvegardes (CE-07)
+
+`scripts/backup-db.sh` (pg_dump vérifié) et `scripts/restore-test.sh` (restauration dans une base jetable) sont planifiés par `.github/workflows/backup.yml`. Procédure, secrets à créer et objectifs RPO 24 h / RTO 4 h : `docs/runbook-sauvegarde.md`.
+
+## Détection de doublons avant upload
+
+`POST /api/v1/upload/verifier-doublon` (enseignant, admin) : `{ "sha256": "…" }` ou `{ "sha256s": ["…"] }` (20 max). Répond, pour chaque empreinte, si le fichier existe déjà (sujet, corrigé ou document de cours) et où. À appeler **avant** l'envoi vers Blob. Les dépôts de sujets et de cours refusent ensuite un doublon avec 409. Migration `20261030000008` (colonne `cours_documents.sha256`).
+
+## Sessions multi-appareils (CE-12)
+
+Chaque connexion crée une session (table `sessions`, refresh token **haché** SHA-256, jamais en clair) ; web et mobile restent connectés en parallèle. Le refresh token est renouvelé à chaque `/auth/refresh` ; rejeter un ancien token (après 10 s de grâce) révoque tout l'appareil (vol présumé).
+- `POST /auth/login` accepte `appareil` (nom affiché) ; `GET /auth/sessions` liste les appareils ; `DELETE /auth/sessions/:id` en déconnecte un ; `POST /auth/logout` coupe l'appareil courant, ou tous avec `{ "tous": true }`.
+- Un changement de mot de passe et une suspension coupent les autres appareils ; `MAX_SESSIONS_PER_USER` (10 par défaut) limite les appareils actifs.
+- Migration `20261030000009` : reprend les anciens refresh tokens (hachés) pour ne déconnecter personne, puis vide `utilisateurs.refresh_token` (colonne à supprimer dans une phase « contracter »).
+- Chaque requête authentifiée vérifie que l'appareil n'a pas été déconnecté (1 requête indexée de plus).
+
+## Téléchargement par redirection (CE-18)
+
+Après contrôle du statut, du limiteur et du comptage (fait avant la réponse), les routes de téléchargement répondent **302** vers l'URL Vercel Blob validée (`?download=1`) : aucun octet de fichier ne transite par la fonction. Les clients doivent suivre les redirections (comportement par défaut des navigateurs et d'OkHttp). `DOWNLOAD_MODE=proxy` rétablit l'ancien relais du fichier (nom de fichier lisible garanti), utile en cas de retour arrière.
+
+## Route de téléchargement unique (CE-19)
+
+Route recommandée : `GET /api/v1/search/documents/telecharger?type=sujet|cours&id=…[&document_id=…][&corrige=true]` (publique, 30/h pour un anonyme). `GET /sujets/:id/telecharger` et `GET /cours/:coursId/documents/:documentId/telecharger` restent servies mais répondent `Deprecation: true` et `Link: <nouvelle route>; rel="successor-version"` (`DEPRECATION_SUNSET` ajoute l'en-tête `Sunset`). À supprimer quand plus aucune version d'APK ne les appelle.
+
+## Demandes de sujet manquant et signalements (CE-20)
+
+`POST /api/v1/demandes` (public, connexion facultative) : `{ type: "sujet_manquant" | "signalement", message (10–1000), contact?, ue_id | sujet_id, site_web }`. Anti-spam : 5 envois / heure / IP (`DEMANDE_RATE_LIMIT_MAX`), champ piège `site_web` (à masquer dans le formulaire et laisser vide : rempli, la demande est ignorée en silence), 1 lien maximum, doublon (même auteur, même cible, 24 h) ignoré. L'IP n'est jamais stockée (empreinte HMAC). Admin : `GET /demandes` (filtres `statut`, `type`) et `PATCH /demandes/:id/statut`. Migration `20261030000010`.
+
+## Statistiques quotidiennes (CE-21)
+
+Chaque téléchargement fait un UPSERT atomique dans `stats_quotidiennes (jour, type, cible_id)` : une ligne par jour et par document, quel que soit le trafic. L'historique par utilisateur (`telechargements`) est limité à une ligne par (utilisateur, cours). Les recherches sans résultat sont comptées par jour dans `recherches_vides` (terme normalisé, 100 caractères max). `GET /api/v1/stats?depuis=&jusqua=` (admin) renvoie total, courbe par jour, 10 documents les plus téléchargés et 20 termes sans résultat. `npm run db:purge-ip` supprime aussi les termes de plus de `STATS_RETENTION_DAYS` jours (180 par défaut). Migration `20261030000011` : reprend l'historique existant, agrégé par jour (le retour arrière ne restaure pas les lignes dédoublonnées).

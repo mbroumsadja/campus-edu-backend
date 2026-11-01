@@ -1,9 +1,12 @@
 // src/modules/search/search.controller.js
 const path = require('path');
+const { bump } = require('../../utils/audit');
+const { compterTelechargement, memoriserTelechargement, journaliserRechercheVide } = require('../../utils/stats');
 const { Cours, Sujet, UE, Filiere, Ecole, Telechargement, CoursDocument } = require('../../models');
 const { Op, fn, col, where: whereFn } = require('sequelize');
 const { success, error } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
+const { containsText } = require('../../utils/searchText');
 
 const toSnakeCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
@@ -18,7 +21,7 @@ const ilike = (columnPath, term) => {
   const parts = columnPath.split('.');
   const attribute = toSnakeCase(parts.pop());
   const dbColumnPath = [...parts, attribute].join('.');
-  return whereFn(fn('LOWER', col(dbColumnPath)), { [Op.like]: `%${term.toLowerCase()}%` });
+  return containsText(dbColumnPath, term);
 };
 // ──────────────────────────────────────────────────────────────────
 //  GET /api/search/documents
@@ -44,6 +47,10 @@ const rechercherDocuments = async (req, res, next) => {
       ecole, ecole_id,
       type, annee,
     } = req.query;
+
+    // Pagination (CE-16) : 20 par défaut, 50 au plus
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
     const searchTerm = (nom || q || '').trim();
     const hasFilters = Boolean(
@@ -188,8 +195,9 @@ const rechercherDocuments = async (req, res, next) => {
     const sujets = onlyCours ? [] : await Sujet.findAll({
       where: sujetWhere,
       include: [includeUE],
-      attributes: ['id', 'titre', 'type', 'cheminFichier', 'annee', 'telechargemements'],
-      order: [['annee', 'DESC']],
+      attributes: ['id', 'titre', 'type', 'type_epreuve', 'session', 'annee', 'annee_academique',
+        'avecCorrige', 'taille_octets', 'nb_telechargements', 'telechargemements'],
+      order: [['annee', 'DESC'], ['id', 'DESC']],
     });
 
     const documents = [];
@@ -218,7 +226,7 @@ const rechercherDocuments = async (req, res, next) => {
           disponible: true,
           deja_telecharge: downloadedCourseIds.has(c.id),
           telechargements: c.telechargemements,
-          lien_telechargement: `/api/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
+          lien_telechargement: `/api/v1/search/documents/telecharger?type=cours&id=${c.id}&document_id=${doc.id}`,
           taille_octets: doc.tailleFichier,
           taille_lisible: formatTaille(doc.tailleFichier),
           niveau: c.ue.niveau,
@@ -235,17 +243,24 @@ const rechercherDocuments = async (req, res, next) => {
 
     sujets.forEach(s => {
       if (s.ue && s.ue.filiere) {
+        const anneeAcademique = s.annee_academique || (s.annee ? `${s.annee - 1}-${s.annee}` : null);
         documents.push({
           id: s.id,
           type_contenu: 'sujet_examen',
           nom: s.titre,
           type: s.type,
+          type_epreuve: s.type_epreuve || s.type,
+          session: s.session,
           disponible: true,
           deja_telecharge: false,
-          telechargements: s.telechargemements,
-          lien_telechargement: `/api/search/documents/telecharger?type=sujet&id=${s.id}`,
-          taille_octets: null,
-          taille_lisible: 'Non disponible',
+          avec_corrige: !!s.avecCorrige,
+          telechargements: s.nb_telechargements ?? s.telechargemements,
+          lien_telechargement: `/api/v1/search/documents/telecharger?type=sujet&id=${s.id}`,
+          lien_corrige: s.avecCorrige
+            ? `/api/v1/search/documents/telecharger?type=sujet&id=${s.id}&corrige=true`
+            : null,
+          taille_octets: s.taille_octets != null ? Number(s.taille_octets) : null,
+          taille_lisible: s.taille_octets != null ? formatTaille(Number(s.taille_octets)) : 'Non disponible',
           niveau: s.ue.niveau,
           semestre: s.ue.semestre,
           filiere_code: s.ue.filiere.code,
@@ -254,27 +269,41 @@ const rechercherDocuments = async (req, res, next) => {
           code_ue: s.ue.code,
           intitule_ue: s.ue.intitule,
           annee: s.annee,
+          annee_academique: anneeAcademique,
         });
       }
     });
 
+    // Sujets d'examen avant les cours ; année académique décroissante (sans année en dernier) ; plus récent d'abord
     documents.sort((a, b) => {
-      if (a.type_contenu !== b.type_contenu) {
-        return a.type_contenu === 'cours' ? -1 : 1;
-      }
-      return 0;
+      if (a.type_contenu !== b.type_contenu) return a.type_contenu === 'sujet_examen' ? -1 : 1;
+      const ya = a.annee_academique || '';
+      const yb = b.annee_academique || '';
+      if (ya !== yb) return !ya ? 1 : !yb ? -1 : (ya < yb ? 1 : -1);
+      return (b.id || 0) - (a.id || 0);
     });
 
-    if (documents.length === 0) {
+    const total = documents.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const pagination = {
+      total, page, limit, totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
+
+    if (total === 0) {
+      if (page === 1) await journaliserRechercheVide(searchTerm); // CE-21 : alimente la liste des recherches sans résultat
       return success(res, {
         nombre_resultats: 0,
         documents: [],
+        pagination,
       }, `Aucun document trouvé pour "${nom || q}"`);
     }
 
     return success(res, {
-      nombre_resultats: documents.length,
-      documents,
+      nombre_resultats: total,
+      documents: documents.slice((page - 1) * limit, page * limit),
+      pagination,
     });
   } catch (err) {
     next(err);
@@ -314,15 +343,16 @@ const telechargerDocument = async (req, res, next) => {
         if (!doc) return error(res, 'Aucun document disponible.', 404);
       }
 
-      cours.increment('telechargemements').catch(() => {});
+      await bump(cours, 'telechargemements');
+      await compterTelechargement('cours', cours.id);
 
       if (req.user) {
-        Telechargement.create({
+        await memoriserTelechargement(Telechargement, {
           utilisateur_id: req.user.id,
           cours_id: cours.id,
           ipAddress: req.ip || req.connection?.remoteAddress || null,
           userAgent: req.get('User-Agent'),
-        }).catch(() => {});
+        });
       }
 
       const fallback = `${cours.titre.replace(/\s+/g, '_')}${path.extname(doc.nomFichierOriginal || '') || '.pdf'}`;
@@ -350,7 +380,8 @@ const telechargerDocument = async (req, res, next) => {
         ? `corrige_${sujet.titre.replace(/\s+/g, '_')}.pdf`
         : `sujet_${sujet.titre.replace(/\s+/g, '_')}.pdf`;
 
-      sujet.increment('telechargemements').catch(() => {});
+      await bump(sujet, ['telechargemements', 'nb_telechargements']);
+      await compterTelechargement('sujet', sujet.id);
       return downloadStoredFile(res, storagePath, fileName);
     }
 

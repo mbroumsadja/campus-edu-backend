@@ -3,6 +3,8 @@ const multer = require('multer');
 const path = require('path');
 const { put } = require('@vercel/blob');
 const { Readable } = require('stream');
+const { isTrustedFileUrl } = require('../utils/fileUrl');
+const { contentDisposition, cleanFileName } = require('../utils/fileName');
 
 const router = express.Router();
 
@@ -108,9 +110,25 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
   }
 
   if (/^https?:\/\//i.test(storagePath)) {
+    // Anti-SSRF : on ne relit jamais une URL hors Vercel Blob (CE-01)
+    if (!isTrustedFileUrl(storagePath)) {
+      return res.status(502).json({ error: 'Source de fichier non autorisée.' });
+    }
+
+    // CE-18 : par défaut on redirige (302) vers le CDN Blob, aucun octet ne transite par la fonction.
+    // DOWNLOAD_MODE=proxy rétablit le relais du fichier (retour arrière).
+    if ((process.env.DOWNLOAD_MODE || 'redirect') !== 'proxy') {
+      const cible = new URL(storagePath);
+      cible.searchParams.set('download', '1'); // Vercel Blob : Content-Disposition: attachment
+      // La réponse dépend du comptage et du limiteur : jamais mise en cache
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.redirect(302, cible.toString());
+    }
+
     let remoteResponse;
     try {
-      remoteResponse = await fetch(storagePath);
+      remoteResponse = await fetch(storagePath, { redirect: 'error' });
     } catch (err) {
       return res.status(502).json({ error: 'Impossible de joindre le stockage distant.' });
     }
@@ -121,15 +139,19 @@ const downloadStoredFile = async (res, storagePath, fileName) => {
 
     const contentType = remoteResponse.headers.get('content-type') || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName || 'document')}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`
-    );
+    res.setHeader('Content-Disposition', contentDisposition(fileName));
 
     return Readable.fromWeb(remoteResponse.body).pipe(res);
   }
 
-  return res.download(path.resolve(storagePath), fileName);
+  // Chemin local : uniquement à l'intérieur du dossier d'uploads
+  const uploadRoot = path.resolve(process.env.UPLOAD_DIR || './uploads');
+  const resolved   = path.resolve(storagePath);
+  if (resolved !== uploadRoot && !resolved.startsWith(uploadRoot + path.sep)) {
+    return res.status(404).json({ error: 'Aucun fichier disponible.' });
+  }
+
+  return res.download(resolved, cleanFileName(fileName) || 'document');
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +194,7 @@ const deleteStoredFile = async (storagePath) => {
   if (!storagePath) return;
 
   if (/^https?:\/\//i.test(storagePath)) {
-    // Adapte selon ton provider actif
+    if (!isTrustedFileUrl(storagePath)) return;
     await del(storagePath, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
     return;
   }
