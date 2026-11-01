@@ -52,7 +52,7 @@ const spec = {
       '- Réponses : `{ success, message?, data }`; erreurs : `{ success: false, message, errors? }`.',
   },
   servers: [{ url: '/api/v1' }],
-  tags: ['Auth', 'Utilisateurs', 'Cours', 'Sujets', 'Filières', 'Écoles', 'Recherche', 'Upload', 'Configuration']
+  tags: ['Auth', 'Utilisateurs', 'Cours', 'Sujets', 'Filières', 'Écoles', 'Recherche', 'Upload', 'Demandes', 'Configuration']
     .map((name) => ({ name })),
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -410,6 +410,34 @@ const spec = {
     '/upload/client-token': { post: { tags: ['Upload'], summary: 'Jeton d\'upload direct vers Vercel Blob (enseignant, admin)', security: secured,
       requestBody: jsonBody({ type: 'object', description: 'Corps envoyé par le SDK @vercel/blob/client.' }),
       responses: { 200: ok('Jeton', { type: 'object' }), 400: err('Refusé'), ...pick(401, 403) } } },
+
+    '/demandes': {
+      post: { tags: ['Demandes'], summary: 'Demander un sujet manquant ou signaler un sujet (public, 5 / heure / IP)',
+        description: 'Anti-spam : limite par IP, champ piège `site_web` (laisser vide, masqué dans le formulaire), message 10–1000 caractères, 1 lien maximum, doublon sur 24 h ignoré. L\'adresse IP n\'est pas conservée. Connexion facultative.',
+        requestBody: jsonBody({ type: 'object', required: ['type', 'message'], properties: {
+          type: { type: 'string', enum: ['sujet_manquant', 'signalement'] },
+          message: { type: 'string', minLength: 10, maxLength: 1000 },
+          contact: { type: 'string', maxLength: 150, description: 'E-mail ou téléphone, facultatif.' },
+          ue_id: { type: 'integer', description: 'Obligatoire pour `sujet_manquant`.' },
+          sujet_id: { type: 'integer', description: 'Obligatoire pour `signalement`.' },
+          site_web: { type: 'string', description: 'Champ piège : doit rester vide.' } } }),
+        responses: { 201: ok('Demande reçue', envelope({ type: 'object', properties: { id: { type: 'integer', nullable: true } } })),
+          200: ok('Demande déjà reçue (doublon sur 24 h)', envelope({ type: 'object' })),
+          400: err('Données invalides'), 404: err('UE ou sujet introuvable'), 429: std[429] } },
+      get: { tags: ['Demandes'], summary: 'Consulter les demandes (admin)', security: secured,
+        parameters: [...pageParams,
+          { name: 'statut', in: 'query', schema: { type: 'string', enum: ['nouvelle', 'en_cours', 'traitee', 'rejetee'] } },
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['sujet_manquant', 'signalement'] } }],
+        responses: { 200: ok('Liste', paginatedOf({ type: 'object', properties: {
+          id: { type: 'integer' }, type: { type: 'string' }, message: { type: 'string' }, contact: { type: 'string', nullable: true },
+          statut: { type: 'string' }, created_at: { type: 'string', format: 'date-time' },
+          ue: { type: 'object', nullable: true }, sujet: { type: 'object', nullable: true }, auteur: { type: 'object', nullable: true } } })),
+          ...pick(401, 403) } },
+    },
+    '/demandes/{id}/statut': { parameters: [idParam],
+      patch: { tags: ['Demandes'], summary: 'Changer le statut d\'une demande (admin)', security: secured,
+        requestBody: jsonBody({ type: 'object', required: ['statut'], properties: { statut: { type: 'string', enum: ['nouvelle', 'en_cours', 'traitee', 'rejetee'] } } }),
+        responses: { 200: ok('Mis à jour', envelope({ type: 'object' })), 400: err('Statut invalide'), ...pick(401, 403, 404) } } },
 
     '/upload/verifier-doublon': { post: { tags: ['Upload'], summary: 'Vérifier si un fichier existe déjà (empreinte SHA-256), avant l\'upload', security: secured,
       description: 'Envoyer `sha256` (une empreinte) ou `sha256s` (1 à 20). Cherche dans les sujets, les corrigés et les documents de cours. À appeler avant d\'envoyer le fichier vers Blob.',

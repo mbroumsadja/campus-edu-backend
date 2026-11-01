@@ -423,6 +423,28 @@ const Session = sequelize.define('Session', {
 
 
 // ══════════════════════════════════════════════════════════════════
+//  MODÈLE : Demande publique (sujet manquant / signalement) — CE-20
+//  L'IP n'est jamais stockée : seulement une empreinte salée (anti-doublon).
+// ══════════════════════════════════════════════════════════════════
+const Demande = sequelize.define('Demande', {
+  id:      { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+  type:    { type: DataTypes.ENUM('sujet_manquant', 'signalement'), allowNull: false },
+  message: { type: DataTypes.TEXT, allowNull: false, validate: { len: [10, 1000] } },
+  contact: { type: DataTypes.STRING(150), comment: 'E-mail ou téléphone, facultatif' },
+  statut:  { type: DataTypes.ENUM('nouvelle', 'en_cours', 'traitee', 'rejetee'), allowNull: false, defaultValue: 'nouvelle' },
+  empreinte_auteur: { type: DataTypes.CHAR(64), comment: 'HMAC(IP) : détecte les doublons sans conserver l\'IP' },
+}, {
+  tableName: 'demandes',
+  indexes: [
+    { fields: ['statut', 'created_at'] },
+    { fields: ['ue_id'] },
+    { fields: ['sujet_id'] },
+    { fields: ['empreinte_auteur', 'created_at'] },
+  ],
+});
+
+
+// ══════════════════════════════════════════════════════════════════
 //  MODÈLE : Journal d'audit (sécurité)
 // ══════════════════════════════════════════════════════════════════
 const AuditLog = sequelize.define('AuditLog', {
@@ -507,9 +529,16 @@ Telechargement.belongsTo(Cours, { foreignKey: 'cours_id', as: 'cours' });
 Utilisateur.hasMany(Session, { foreignKey: { name: 'utilisateur_id', allowNull: false }, as: 'sessions', onDelete: 'CASCADE' });
 Session.belongsTo(Utilisateur, { foreignKey: { name: 'utilisateur_id', allowNull: false }, as: 'utilisateur', onDelete: 'CASCADE' });
 
+UE.hasMany(Demande, { foreignKey: 'ue_id', as: 'demandes', onDelete: 'SET NULL' });
+Demande.belongsTo(UE, { foreignKey: 'ue_id', as: 'ue', onDelete: 'SET NULL' });
+Sujet.hasMany(Demande, { foreignKey: 'sujet_id', as: 'signalements', onDelete: 'SET NULL' });
+Demande.belongsTo(Sujet, { foreignKey: 'sujet_id', as: 'sujet', onDelete: 'SET NULL' });
+Demande.belongsTo(Utilisateur, { foreignKey: 'auteur_id', as: 'auteur', onDelete: 'SET NULL' });
+Demande.belongsTo(Utilisateur, { foreignKey: 'traite_par', as: 'traitePar', onDelete: 'SET NULL' });
+
 // Utilisateur → AuditLogs
 Utilisateur.hasMany(AuditLog, { foreignKey: 'utilisateur_id', as: 'logs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'utilisateur_id', as: 'utilisateur' });
 
 
-module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog, Session };
+module.exports = { sequelize, Ecole, Filiere, Utilisateur, UE, Cours, CoursDocument, Sujet, Telechargement, AuditLog, Session, Demande };

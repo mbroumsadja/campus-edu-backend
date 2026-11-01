@@ -20,7 +20,7 @@ describe('GET /api/v1/docs (page autonome)', () => {
     }
   });
 
-  it('documente chaque endpoint du contrat (44), chacun une seule fois', async () => {
+  it('documente chaque endpoint du contrat, chacun une seule fois', async () => {
     const { text } = await request(app).get('/api/v1/docs');
     expect(operations.length).toBeGreaterThanOrEqual(44);
     expect((text.match(/<details class="op"/g) || []).length).toBe(operations.length);

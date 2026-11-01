@@ -97,4 +97,14 @@ const downloadLimiter = rateLimit({
   handler: tooMany('Trop de téléchargements. Réessayez dans quelques minutes.'),
 });
 
-module.exports = { globalLimiter, loginLimiter, downloadLimiter, UpstashStore };
+// ── Demandes de sujet / signalements publics : 5 / heure / IP (CE-20) ─
+const demandeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: parseInt(process.env.DEMANDE_RATE_LIMIT_MAX, 10) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: buildStore('rl:demande:'),
+  handler: tooMany('Trop de demandes envoyées. Réessayez plus tard.'),
+});
+
+module.exports = { globalLimiter, loginLimiter, downloadLimiter, demandeLimiter, UpstashStore };

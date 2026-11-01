@@ -283,3 +283,7 @@ Après contrôle du statut, du limiteur et du comptage (fait avant la réponse),
 ## Route de téléchargement unique (CE-19)
 
 Route recommandée : `GET /api/v1/search/documents/telecharger?type=sujet|cours&id=…[&document_id=…][&corrige=true]` (publique, 30/h pour un anonyme). `GET /sujets/:id/telecharger` et `GET /cours/:coursId/documents/:documentId/telecharger` restent servies mais répondent `Deprecation: true` et `Link: <nouvelle route>; rel="successor-version"` (`DEPRECATION_SUNSET` ajoute l'en-tête `Sunset`). À supprimer quand plus aucune version d'APK ne les appelle.
+
+## Demandes de sujet manquant et signalements (CE-20)
+
+`POST /api/v1/demandes` (public, connexion facultative) : `{ type: "sujet_manquant" | "signalement", message (10–1000), contact?, ue_id | sujet_id, site_web }`. Anti-spam : 5 envois / heure / IP (`DEMANDE_RATE_LIMIT_MAX`), champ piège `site_web` (à masquer dans le formulaire et laisser vide : rempli, la demande est ignorée en silence), 1 lien maximum, doublon (même auteur, même cible, 24 h) ignoré. L'IP n'est jamais stockée (empreinte HMAC). Admin : `GET /demandes` (filtres `statut`, `type`) et `PATCH /demandes/:id/statut`. Migration `20261030000010`.

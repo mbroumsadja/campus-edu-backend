@@ -12,6 +12,7 @@ router.use('/ecoles',   require('../modules/ecoles/ecoles.routes'));
 router.use('/upload',   require('../modules/upload/upload.routes'));
 router.use('/search',   require('../modules/search/search.routes'));
 router.use('/config',   require('../modules/config/config.routes'));
+router.use('/demandes',  require('../modules/demandes/demandes.routes'));
 
 router.get('/ping', (_req, res) => {
   res.json({ success: true, message: 'Backend Campus edu opérationnel 🚀' });
