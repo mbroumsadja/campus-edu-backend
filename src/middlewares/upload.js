@@ -31,7 +31,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const maxSizeMB = parseInt(process.env.MAX_FILE_SIZE_MB) || 50;
+const maxSizeMB = parseInt(process.env.MAX_FILE_SIZE_MB) || 100;
 
 const upload = multer({
   storage: multer.memoryStorage(),

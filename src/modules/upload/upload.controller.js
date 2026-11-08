@@ -31,7 +31,7 @@ const genererJetonClient = async (req, res) => {
         return {
           allowedContentTypes: ALLOWED_CONTENT_TYPES,
           addRandomSuffix: true,
-          maximumSizeInBytes: (parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 50) * 1024 * 1024,
+          maximumSizeInBytes: (parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 100) * 1024 * 1024,
           tokenPayload: JSON.stringify({
             userId: req.user.id,
             clientPayload: clientPayload || null,

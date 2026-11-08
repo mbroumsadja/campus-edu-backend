@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
     latestAppVersion: cfg.latestVersion,
     updateUrl: cfg.updateUrl,
     updateMessage: cfg.message,
-    maxUploadMB: parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 50,
+    maxUploadMB: parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 100,
     allowedContentTypes: ['application/pdf', 'video/mp4', 'video/webm',
       'application/vnd.ms-powerpoint',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
