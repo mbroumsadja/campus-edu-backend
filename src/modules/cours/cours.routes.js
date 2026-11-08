@@ -44,7 +44,12 @@ router.post('/',
   handleUploadError(upload.array('documents')),
   [
     body('titre').trim().notEmpty().withMessage('Le titre est obligatoire'),
-    body('ue_id').isInt().withMessage('UE invalide'),
+    // Soit une UE (ue_id), soit plusieurs pour un tronc commun (ue_ids, admin)
+    body('ue_id')
+      .if((_value, { req }) => !Array.isArray(req.body.ue_ids))
+      .isInt().withMessage('UE invalide'),
+    body('ue_ids').optional().isArray({ min: 1, max: 100 }).withMessage('Liste d\'UE invalide'),
+    body('ue_ids.*').optional().isInt().withMessage('UE invalide'),
     body('type').optional().isIn(['pdf', 'video', 'slide', 'autre']),
   ],
   validate,

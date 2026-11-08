@@ -3,13 +3,24 @@
 const { bump } = require('../../utils/audit');
 const { compterTelechargement, memoriserTelechargement } = require('../../utils/stats');
 const { chercherDoublons, estSha256, normaliserSha } = require('../../utils/doublons');
-const { Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
+const { sequelize, Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
+const { supprimerFichierSiOrphelin } = require('../../utils/fichiersPartages');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { downloadStoredFile } = require('../../middlewares/upload');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
 const { cleanFileName } = require('../../utils/fileName');
 const { containsText } = require('../../utils/searchText');
+
+// Liste d'identifiants d'UE (tableau JSON ou chaîne JSON), sans doublon
+const lireUeIds = (valeur) => {
+  let liste = valeur;
+  if (typeof liste === 'string') {
+    try { liste = JSON.parse(liste); } catch (_e) { return []; }
+  }
+  if (!Array.isArray(liste)) return [];
+  return [...new Set(liste.map(Number).filter(Number.isInteger))];
+};
 
 // ──────────────────────────────────────────────────────────────────
 //  GET /cours
@@ -159,8 +170,30 @@ const creerCours = async (req, res, next) => {
 
     const { titre, description, type, ue_id, anneAcademique } = req.body;
 
-    const ue = await UE.findByPk(ue_id);
-    if (!ue) return error(res, 'Unité d\'enseignement introuvable.', 404);
+    // Tronc commun : le même cours est copié dans plusieurs UE (une par filière),
+    // toutes les copies pointent vers les mêmes fichiers. Réservé à l'admin.
+    const ueIdsDemandes = lireUeIds(req.body.ue_ids);
+    const troncCommun = ueIdsDemandes.length > 0;
+
+    if (troncCommun && req.user.role !== 'admin') {
+      return error(res, 'Seul un administrateur peut enregistrer un cours en tronc commun.', 403);
+    }
+
+    const idsVoulus = troncCommun ? ueIdsDemandes : [Number(ue_id)];
+    const uesTrouvees = await UE.findAll({ where: { id: idsVoulus } });
+    const uesParId = new Map(uesTrouvees.map((u) => [u.id, u]));
+    const introuvables = idsVoulus.filter((id) => !uesParId.has(id));
+    if (introuvables.length) {
+      return error(
+        res,
+        troncCommun
+          ? `Unité(s) d'enseignement introuvable(s) : ${introuvables.join(', ')}.`
+          : 'Unité d\'enseignement introuvable.',
+        404
+      );
+    }
+    const ues = idsVoulus.map((id) => uesParId.get(id));
+    const ue = ues[0];
 
     if (req.user.role === 'enseignant') {
       const enseignant = await Utilisateur.findByPk(req.user.id, { attributes: ['filiere_id'] });
@@ -169,29 +202,45 @@ const creerCours = async (req, res, next) => {
       }
     }
 
-    const cours = await Cours.create({
-      titre,
-      description,
-      type: type || 'pdf',
-      ue_id,
-      enseignant_id: req.user.id,
-      cheminFichier: uploadedFiles[0]?.path || uploadedFiles[0]?.url || null,
-      nomFichierOriginal: uploadedFiles[0]?.originalname,
-      tailleFichier: uploadedFiles[0]?.size,
-      anneAcademique: anneAcademique || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-      statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
+    // Tout ou rien : si une copie échoue, aucune n'est enregistrée.
+    const copies = await sequelize.transaction(async (transaction) => {
+      const creees = [];
+      for (const ueCible of ues) {
+        const cours = await Cours.create({
+          titre,
+          description,
+          type: type || 'pdf',
+          ue_id: ueCible.id,
+          enseignant_id: req.user.id,
+          cheminFichier: uploadedFiles[0]?.path || uploadedFiles[0]?.url || null,
+          nomFichierOriginal: uploadedFiles[0]?.originalname,
+          tailleFichier: uploadedFiles[0]?.size,
+          anneAcademique: anneAcademique || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+          statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
+        }, { transaction });
+
+        await CoursDocument.bulkCreate(uploadedFiles.map((file) => ({
+          cours_id: cours.id,
+          cheminFichier: file.path || file.url,
+          nomFichierOriginal: cleanFileName(file.originalname),
+          tailleFichier: file.size,
+          sha256: file.sha256 || null,
+        })), { transaction });
+
+        creees.push(cours);
+      }
+      return creees;
     });
 
-const documents = uploadedFiles.map((file) => ({
-      cours_id: cours.id,
-      cheminFichier: file.path || file.url,
-      nomFichierOriginal: cleanFileName(file.originalname),
-      tailleFichier: file.size,
-      sha256: file.sha256 || null,
-    }));
-    await CoursDocument.bulkCreate(documents);
+    if (troncCommun) {
+      return created(
+        res,
+        { cours: copies, total: copies.length },
+        `Cours enregistré dans ${copies.length} unité${copies.length > 1 ? 's' : ''} d'enseignement.`
+      );
+    }
 
-    return created(res, cours, 'Cours déposé avec succès. En attente de validation.');
+    return created(res, copies[0], 'Cours déposé avec succès. En attente de validation.');
   } catch (err) {
     next(err);
   }
@@ -232,8 +281,8 @@ const modifierCours = async (req, res, next) => {
 
     // Si un nouveau main est envoyé, supprimer l'ancien stockage et mettre à jour les champs
     if (uploadedMain) {
-      // supprimer l'ancien fichier stocké (s'il existe)
-      await deleteStoredFile(cours.cheminFichier).catch(() => {});
+      // supprimer l'ancien fichier stocké (s'il existe), sauf s'il est partagé avec une autre copie
+      await supprimerFichierSiOrphelin(cours.cheminFichier, { sauf: { coursId: cours.id } });
       updates.cheminFichier = uploadedMain.path || uploadedMain.url || null;
       updates.nomFichierOriginal = uploadedMain.originalname || uploadedMain.filename || null;
       updates.tailleFichier = uploadedMain.size || null;
@@ -311,14 +360,14 @@ const supprimerCours = async (req, res, next) => {
     const cours = await Cours.findByPk(req.params.id, { include: [{ model: CoursDocument, as: 'fichiers' }] });
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
-    // Supprimer fichier principal depuis le stockage (local ou distant)
-    if (cours.cheminFichier) {
-      await deleteStoredFile(cours.cheminFichier).catch(() => {});
-    }
-
-    // Supprimer chaque document rattaché du stockage
-    for (const doc of (cours.fichiers || [])) {
-      if (doc.cheminFichier) await deleteStoredFile(doc.cheminFichier).catch(() => {});
+    // Supprimer les fichiers du stockage (local ou distant) — sauf ceux encore utilisés
+    // par une autre copie (tronc commun : plusieurs cours partagent les mêmes fichiers).
+    const chemins = new Set([
+      cours.cheminFichier,
+      ...(cours.fichiers || []).map((doc) => doc.cheminFichier),
+    ].filter(Boolean));
+    for (const chemin of chemins) {
+      await supprimerFichierSiOrphelin(chemin, { sauf: { coursId: cours.id } });
     }
 
     // Supprimer les enregistrements associés
