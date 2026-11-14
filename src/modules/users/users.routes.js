@@ -32,6 +32,11 @@ router.patch('/:id/statut', authorize('admin'),
   validate,
   controller.changerStatut
 );
+router.patch('/:id/role', authorize('admin'),
+  [body('role').isIn(['etudiant','enseignant','admin','super_admin'])],
+  validate,
+  controller.changerRole
+);
 router.delete('/:id',      authorize('admin'), controller.supprimerUtilisateur);
 
 module.exports = router;

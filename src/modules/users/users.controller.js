@@ -109,6 +109,14 @@ const creerUtilisateur = async (req, res, next) => {
 // ──────────────────────────────────────────────────────────────────
 //  PUT /users/:id  (Admin)
 // ──────────────────────────────────────────────────────────────────
+// Dernier super admin actif : on ne peut ni le suspendre, ni le rétrograder, ni le supprimer
+// (sinon plus personne ne pourrait valider les comptes administrateurs).
+const estDernierSuperAdmin = async (user) => {
+  if (user.role !== 'super_admin' || user.statut !== 'actif') return false;
+  const autres = await Utilisateur.count({ where: { role: 'super_admin', statut: 'actif', id: { [Op.ne]: user.id } } });
+  return autres === 0;
+};
+
 const modifierUtilisateur = async (req, res, next) => {
   try {
     const user = await Utilisateur.findByPk(req.params.id);
@@ -121,6 +129,11 @@ const modifierUtilisateur = async (req, res, next) => {
       return error(res, 'Seul un super administrateur peut valider ou modifier le statut d\'un compte administrateur.', 403);
     }
 
+    if (statut && statut !== 'actif') {
+      if (user.id === req.user.id) return error(res, 'Vous ne pouvez pas désactiver votre propre compte.', 403);
+      if (await estDernierSuperAdmin(user)) return error(res, 'Impossible : c\'est le dernier super administrateur actif.', 409);
+    }
+
     if (nom)        updates.nom        = nom;
     if (prenom)     updates.prenom     = prenom;
     if (email)      updates.email      = email;
@@ -129,6 +142,7 @@ const modifierUtilisateur = async (req, res, next) => {
     if (niveau)     updates.niveau     = niveau;
 
     await user.update(updates);
+    if (statut && statut !== 'actif') await revoquer({ utilisateur_id: user.id }, 'suspension');
 
     await audit({
       action:         'UPDATE_USER',
@@ -156,10 +170,16 @@ const changerStatut = async (req, res, next) => {
     if (estCompteAdmin(user) && !estSuperAdmin(req.user)) {
       return error(res, 'Seul un super administrateur peut valider, suspendre ou activer un compte administrateur.', 403);
     }
+    if (user.id === req.user.id && statut !== 'actif') {
+      return error(res, 'Vous ne pouvez pas désactiver votre propre compte.', 403);
+    }
+    if (statut !== 'actif' && await estDernierSuperAdmin(user)) {
+      return error(res, 'Impossible : c\'est le dernier super administrateur actif.', 409);
+    }
     await user.update({ statut });
 
-    // Si on suspend, on invalide aussi sa session
-    if (statut === 'suspendu') {
+    // Un compte suspendu ou remis en attente est déconnecté de tous ses appareils
+    if (statut !== 'actif') {
       await revoquer({ utilisateur_id: user.id }, 'suspension');
     }
 
@@ -177,6 +197,45 @@ const changerStatut = async (req, res, next) => {
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  PATCH /users/:id/role  (Admin)
+//  - super admin : tous les rôles (nommer / retirer admin et super admin)
+//  - admin       : uniquement étudiant ↔ enseignant
+// ──────────────────────────────────────────────────────────────────
+const changerRole = async (req, res, next) => {
+  try {
+    const user = await Utilisateur.findByPk(req.params.id);
+    if (!user) return error(res, 'Utilisateur introuvable.', 404);
+
+    const { role } = req.body;
+    if (role === user.role) return success(res, { id: user.id, role }, 'Rôle inchangé.');
+    if (user.id === req.user.id) return error(res, 'Vous ne pouvez pas modifier votre propre rôle.', 403);
+
+    const touchePrivilegies = estCompteAdmin(user) || estCompteAdmin({ role });
+    if (touchePrivilegies && !estSuperAdmin(req.user)) {
+      return error(res, 'Seul un super administrateur peut nommer ou retirer un administrateur.', 403);
+    }
+    if (await estDernierSuperAdmin(user)) {
+      return error(res, 'Impossible : c\'est le dernier super administrateur actif.', 409);
+    }
+
+    const ancienRole = user.role;
+    await user.update({ role });
+    // Les appareils connectés doivent se reconnecter pour prendre le nouveau rôle
+    await revoquer({ utilisateur_id: user.id }, 'admin');
+
+    await audit({
+      action:         'CHANGE_ROLE',
+      utilisateur_id: req.user.id,
+      details:        { cible: user.matricule, ancienRole, nouveauRole: role },
+      ipAddress:      req.ip,
+    });
+    return success(res, { id: user.id, role }, 'Rôle mis à jour.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
 //  DELETE /users/:id  (Admin)
 // ──────────────────────────────────────────────────────────────────
 const supprimerUtilisateur = async (req, res, next) => {
@@ -186,6 +245,10 @@ const supprimerUtilisateur = async (req, res, next) => {
 
     if (estCompteAdmin(user) && !estSuperAdmin(req.user)) {
       return error(res, 'Seul un super administrateur peut supprimer un compte administrateur.', 403);
+    }
+
+    if (await estDernierSuperAdmin(user)) {
+      return error(res, 'Impossible : c\'est le dernier super administrateur actif.', 409);
     }
 
     // Empêcher un admin de se supprimer lui-même
@@ -209,5 +272,5 @@ const supprimerUtilisateur = async (req, res, next) => {
 
 module.exports = {
   listerUtilisateurs, getUtilisateur, creerUtilisateur,
-  modifierUtilisateur, changerStatut, supprimerUtilisateur,
+  modifierUtilisateur, changerStatut, changerRole, supprimerUtilisateur,
 };
