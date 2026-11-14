@@ -57,4 +57,20 @@ const aTraiter = async (_req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { tableauDeBord, aTraiter };
+// GET /stats/appareils — appareils qui utilisent l'application.
+// Un appareil = une famille de sessions (connexion + rotations de son refresh token).
+//   total  : tous les appareils qui se sont connectés depuis le début
+//   actifs : appareils actuellement connectés (session non révoquée et non expirée)
+const appareils = async (_req, res, next) => {
+  try {
+    const [r] = await sequelize.query(
+      `SELECT count(DISTINCT famille_id)::int AS total,
+              (count(DISTINCT famille_id) FILTER (WHERE revoked_at IS NULL AND expires_at > now()))::int AS actifs
+         FROM sessions`,
+      { type: QueryTypes.SELECT }
+    );
+    return success(res, { total: r.total, actifs: r.actifs });
+  } catch (err) { next(err); }
+};
+
+module.exports = { tableauDeBord, aTraiter, appareils };
