@@ -203,4 +203,33 @@ const deleteStoredFile = async (storagePath) => {
   if (fs.existsSync(storagePath)) fs.unlinkSync(storagePath);
 };
 
-module.exports = { upload, handleUploadError, downloadStoredFile, deleteStoredFile, uploadRouter: router };
+// Erreur de stockage : la suppression d'un fichier a échoué (l'appelant annule alors la transaction SQL)
+class StockageError extends Error {
+  constructor(message) { super(message); this.name = 'StockageError'; }
+}
+
+// Suppression STRICTE (règle du tout ou rien) : lève StockageError au premier échec.
+// Les URL Blob sont supprimées en UNE seule requête. Supprimer un fichier déjà absent n'est pas une erreur.
+const deleteStoredFilesStrict = async (paths) => {
+  const urls = [];
+  const locaux = [];
+  for (const p of paths.filter(Boolean)) {
+    if (/^https?:\/\//i.test(p)) { if (isTrustedFileUrl(p)) urls.push(p); } else locaux.push(p);
+  }
+  if (urls.length) {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) throw new StockageError('BLOB_READ_WRITE_TOKEN manquant');
+    try {
+      await del(urls, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    } catch (err) {
+      throw new StockageError(`Suppression Blob impossible : ${err.message}`);
+    }
+  }
+  const fs = require('fs');
+  for (const p of locaux) {
+    try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (err) {
+      throw new StockageError(`Suppression du fichier impossible : ${err.message}`);
+    }
+  }
+};
+
+module.exports = { upload, handleUploadError, downloadStoredFile, deleteStoredFile, deleteStoredFilesStrict, StockageError, uploadRouter: router };

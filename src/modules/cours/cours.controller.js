@@ -4,7 +4,7 @@ const { bump } = require('../../utils/audit');
 const { compterTelechargement, memoriserTelechargement } = require('../../utils/stats');
 const { chercherDoublons, estSha256, normaliserSha } = require('../../utils/doublons');
 const { sequelize, Cours, UE, Utilisateur, Filiere, Telechargement, CoursDocument } = require('../../models');
-const { supprimerFichierSiOrphelin } = require('../../utils/fichiersPartages');
+const { supprimerFichiersOrphelins, repondreErreurStockage } = require('../../utils/fichiersPartages');
 const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
@@ -280,10 +280,11 @@ const modifierCours = async (req, res, next) => {
     const uploadedMain = req.files?.main?.[0] ?? null;
     const uploadedDocs = (req.files?.documents && Array.isArray(req.files.documents)) ? req.files.documents : [];
 
+    const anciensChemins = [];
     // Si un nouveau main est envoyé, supprimer l'ancien stockage et mettre à jour les champs
     if (uploadedMain) {
-      // supprimer l'ancien fichier stocké (s'il existe), sauf s'il est partagé avec une autre copie
-      await supprimerFichierSiOrphelin(cours.cheminFichier, { sauf: { coursId: cours.id } });
+      // l'ancien fichier sera supprimé du stockage dans la transaction (sauf s'il est partagé avec une autre copie)
+      anciensChemins.push(cours.cheminFichier);
       updates.cheminFichier = uploadedMain.path || uploadedMain.url || null;
       updates.nomFichierOriginal = uploadedMain.originalname || uploadedMain.filename || null;
       updates.tailleFichier = uploadedMain.size || null;
@@ -317,17 +318,18 @@ const modifierCours = async (req, res, next) => {
       });
     }
 
-    // Appliquer mises à jour de métadonnées
-    if (Object.keys(updates).length > 0) {
-      await cours.update(updates);
-    }
-
-    if (newDocuments.length > 0) {
-      await CoursDocument.bulkCreate(newDocuments);
-    }
-
-    if (req.user.role === 'enseignant') {
-      await cours.update({ statut: 'en_attente' });
+    // Tout ou rien : mises à jour SQL et suppression de l'ancien fichier du stockage dans la même transaction
+    const t = await sequelize.transaction();
+    try {
+      if (Object.keys(updates).length > 0) await cours.update(updates, { transaction: t });
+      if (newDocuments.length > 0) await CoursDocument.bulkCreate(newDocuments, { transaction: t });
+      if (req.user.role === 'enseignant') await cours.update({ statut: 'en_attente' }, { transaction: t });
+      await supprimerFichiersOrphelins(anciensChemins, { transaction: t });
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      if (repondreErreurStockage(res, err)) return;
+      throw err;
     }
 
     const refreshed = await Cours.findByPk(cours.id, { include: [{ model: CoursDocument, as: 'fichiers' }] });
@@ -361,20 +363,67 @@ const supprimerCours = async (req, res, next) => {
     const cours = await Cours.findByPk(req.params.id, { include: [{ model: CoursDocument, as: 'fichiers' }] });
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
-    // Supprimer les fichiers du stockage (local ou distant) — sauf ceux encore utilisés
-    // par une autre copie (tronc commun : plusieurs cours partagent les mêmes fichiers).
-    const chemins = new Set([
-      cours.cheminFichier,
-      ...(cours.fichiers || []).map((doc) => doc.cheminFichier),
-    ].filter(Boolean));
-    for (const chemin of chemins) {
-      await supprimerFichierSiOrphelin(chemin, { sauf: { coursId: cours.id } });
+    // Tout ou rien : lignes SQL et fichiers du stockage sont supprimés ensemble ou pas du tout.
+    // Les fichiers encore utilisés par une autre copie (tronc commun) sont conservés.
+    const chemins = [cours.cheminFichier, ...(cours.fichiers || []).map((doc) => doc.cheminFichier)];
+    const t = await sequelize.transaction();
+    try {
+      await CoursDocument.destroy({ where: { cours_id: cours.id }, transaction: t });
+      await cours.destroy({ transaction: t });
+      await supprimerFichiersOrphelins(chemins, { transaction: t });
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      if (repondreErreurStockage(res, err)) return;
+      throw err;
+    }
+    return success(res, {}, 'Cours supprimé.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
+//  DELETE /cours/:id/documents/:documentId — Son créateur ou un admin
+//  Retire UN fichier du cours (base + stockage, tout ou rien).
+// ──────────────────────────────────────────────────────────────────
+const supprimerDocument = async (req, res, next) => {
+  try {
+    const { id, documentId } = req.params;
+    const cours = await Cours.findByPk(id);
+    if (!cours) return error(res, 'Cours introuvable.', 404);
+    const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: cours.id } });
+    if (!document) return error(res, 'Document introuvable.', 404);
+
+    const autres = await CoursDocument.findAll({
+      where: { cours_id: cours.id, id: { [Op.ne]: document.id } },
+      order: [['id', 'ASC']],
+    });
+    const estPrincipal = document.cheminFichier === cours.cheminFichier;
+    if (autres.length === 0) {
+      return error(res, 'Un cours doit garder au moins un fichier : supprimez le cours pour tout retirer.', 400);
     }
 
-    // Supprimer les enregistrements associés
-    await CoursDocument.destroy({ where: { cours_id: cours.id } });
-    await cours.destroy();
-    return success(res, {}, 'Cours supprimé.');
+    const t = await sequelize.transaction();
+    try {
+      // Le fichier principal du cours est repris sur un autre document
+      if (estPrincipal) {
+        const [prochain] = autres;
+        await cours.update({
+          cheminFichier: prochain.cheminFichier,
+          nomFichierOriginal: prochain.nomFichierOriginal,
+          tailleFichier: prochain.tailleFichier,
+        }, { transaction: t });
+      }
+      await document.destroy({ transaction: t });
+      await supprimerFichiersOrphelins([document.cheminFichier], { transaction: t });
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      if (repondreErreurStockage(res, err)) return;
+      throw err;
+    }
+    return success(res, { id: document.id }, 'Fichier supprimé.');
   } catch (err) {
     next(err);
   }
@@ -412,4 +461,4 @@ const telechargerDocument = async (req, res, next) => {
   }
 };
 
-module.exports = { listerCours, getCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours };
+module.exports = { listerCours, getCours, telechargerDocument, creerCours, modifierCours, changerStatut, supprimerCours, supprimerDocument };

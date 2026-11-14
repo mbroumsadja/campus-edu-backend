@@ -86,6 +86,17 @@ router.patch('/:id/statut',
   controller.changerStatut
 );
 
+// Retirer un fichier d'un cours (son créateur ou un admin) — base + stockage, tout ou rien
+router.delete('/:id/documents/:documentId',
+  verifyToken,
+  authorize('enseignant', 'admin'),
+  param('id').isInt().withMessage('ID invalide'),
+  param('documentId').isInt().withMessage('ID de document invalide'),
+  validate,
+  canManageOwnedResource(Cours, 'enseignant_id'),
+  controller.supprimerDocument
+);
+
 // Supprimer un cours (son créateur ou un admin)
 router.delete('/:id',
   verifyToken,

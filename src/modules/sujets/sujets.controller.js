@@ -1,12 +1,13 @@
 // src/modules/sujets/sujets.controller.js
 
-const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
+const { sequelize, Sujet, UE, Utilisateur, Filiere } = require('../../models');
 const { estAdmin } = require('../../utils/roles');
 const { bump } = require('../../utils/audit');
 const { compterTelechargement } = require('../../utils/stats');
 const { Op }      = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
-const { downloadStoredFile, deleteStoredFile } = require('../../middlewares/upload');
+const { downloadStoredFile } = require('../../middlewares/upload');
+const { supprimerFichiersOrphelins, repondreErreurStockage } = require('../../utils/fichiersPartages');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
 const { containsText } = require('../../utils/searchText');
 
@@ -232,13 +233,13 @@ const modifierSujet = async (req, res, next) => {
       }
     }
 
+    const anciensChemins = [];
     if (uploadedSujet) {
-      // supprimer ancien fichier
-      await deleteStoredFile(sujet.cheminFichier).catch(() => {});
+      anciensChemins.push(sujet.cheminFichier); // supprimé du stockage dans la transaction
       updates.cheminFichier = uploadedSujet.path || uploadedSujet.url || null;
     }
     if (uploadedCorrige) {
-      await deleteStoredFile(sujet.cheminCorrige).catch(() => {});
+      anciensChemins.push(sujet.cheminCorrige);
       updates.cheminCorrige = uploadedCorrige.path || uploadedCorrige.url || null;
       updates.avecCorrige = true;
     }
@@ -247,9 +248,17 @@ const modifierSujet = async (req, res, next) => {
       return error(res, 'Aucune modification fournie.', 400);
     }
 
-    await sujet.update(updates);
-    if (req.user.role === 'enseignant') {
-      await sujet.update({ statut: 'en_attente' });
+    // Tout ou rien : mise à jour SQL et suppression des anciens fichiers du stockage ensemble
+    const t = await sequelize.transaction();
+    try {
+      await sujet.update(updates, { transaction: t });
+      if (req.user.role === 'enseignant') await sujet.update({ statut: 'en_attente' }, { transaction: t });
+      await supprimerFichiersOrphelins(anciensChemins, { transaction: t });
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      if (repondreErreurStockage(res, err)) return;
+      throw err;
     }
 
     const refreshed = await Sujet.findByPk(sujet.id);
@@ -281,10 +290,17 @@ const supprimerSujet = async (req, res, next) => {
     const sujet = await Sujet.findByPk(req.params.id);
     if (!sujet) return error(res, 'Sujet introuvable.', 404);
 
-    if (sujet.cheminFichier) await deleteStoredFile(sujet.cheminFichier).catch(() => {});
-    if (sujet.cheminCorrige) await deleteStoredFile(sujet.cheminCorrige).catch(() => {});
-
-    await sujet.destroy();
+    // Tout ou rien : ligne SQL et fichiers du stockage supprimés ensemble ou pas du tout
+    const t = await sequelize.transaction();
+    try {
+      await sujet.destroy({ transaction: t });
+      await supprimerFichiersOrphelins([sujet.cheminFichier, sujet.cheminCorrige], { transaction: t });
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      if (repondreErreurStockage(res, err)) return;
+      throw err;
+    }
     return success(res, {}, 'Sujet supprimé.');
   } catch (err) {
     next(err);
