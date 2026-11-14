@@ -119,8 +119,10 @@ const rechercherDocuments = async (req, res, next) => {
       include: [includeFiliere],
     };
 
+    // Les supports de révision n'apparaissent jamais dans la recherche de documents
     const coursWhere = {
       statut: 'publie',
+      categorie: 'cours',
     };
 
     const sujetWhere = {
@@ -330,9 +332,11 @@ const telechargerDocument = async (req, res, next) => {
       const { document_id } = req.query;
 
       const cours = await Cours.findByPk(documentId, {
-        attributes: ['id', 'titre', 'statut'],
+        attributes: ['id', 'titre', 'statut', 'categorie'],
       });
       if (!cours || cours.statut !== 'publie') return error(res, 'Cours non disponible.', 404);
+      // Un support de révision n'est téléchargeable que par un utilisateur connecté
+      if (cours.categorie === 'support' && !req.user) return error(res, 'Connexion requise pour télécharger un support de révision.', 401);
 
       let doc;
       if (document_id) {

@@ -454,8 +454,10 @@ const telechargerDocument = async (req, res, next) => {
   try {
     const { coursId, documentId } = req.params;
 
-    const cours = await Cours.findByPk(coursId, { attributes: ['id', 'statut'] });
+    const cours = await Cours.findByPk(coursId, { attributes: ['id', 'statut', 'categorie'] });
     if (!cours) return error(res, 'Cours introuvable.', 404);
+    // Un support de révision n'est téléchargeable que par un utilisateur connecté
+    if (cours.categorie === 'support' && !req.user) return error(res, 'Connexion requise pour télécharger un support de révision.', 401);
     if (cours.statut !== 'publie' && !estAdmin(req.user)) return error(res, 'Cours non disponible.', 403);
 
     const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: coursId } });
