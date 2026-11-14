@@ -67,7 +67,9 @@ const authorize = (...roles) => {
       return error(res, 'Non authentifié.', 401);
     }
 
-    if (!roles.includes(req.user.role)) {
+    // Le super_admin cumule tous les droits de l'admin
+    const autorises = roles.includes('admin') ? [...roles, 'super_admin'] : roles;
+    if (!autorises.includes(req.user.role)) {
       return error(res, `Accès refusé. Rôle requis : ${roles.join(' ou ')}.`, 403);
     }
 
@@ -84,7 +86,7 @@ const ownerOrAdmin = (paramIdField = 'id') => {
   return (req, res, next) => {
     const resourceId = parseInt(req.params[paramIdField]);
     const isOwner    = req.user.id === resourceId;
-    const isAdmin    = req.user.role === 'admin';
+    const isAdmin    = ['admin', 'super_admin'].includes(req.user.role);
 
     if (!isOwner && !isAdmin) {
       return error(res, 'Accès refusé à cette ressource.', 403);
@@ -110,7 +112,7 @@ const canManageOwnedResource = (Model, ownerField = 'enseignant_id', paramName =
       }
 
       const isOwner = Number(resource[ownerField]) === Number(req.user.id);
-      const isAdmin = req.user.role === 'admin';
+      const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
 
       if (!isOwner && !isAdmin) {
         return error(res, 'Accès refusé à cette ressource.', 403);

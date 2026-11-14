@@ -9,6 +9,7 @@ const { Op } = require('sequelize');
 const { success, created, error, paginated } = require('../../utils/apiResponse');
 const { downloadStoredFile } = require('../../middlewares/upload');
 const { isTrustedFileUrl } = require('../../utils/fileUrl');
+const { estAdmin } = require('../../utils/roles');
 const { cleanFileName } = require('../../utils/fileName');
 const { containsText } = require('../../utils/searchText');
 
@@ -175,7 +176,7 @@ const creerCours = async (req, res, next) => {
     const ueIdsDemandes = lireUeIds(req.body.ue_ids);
     const troncCommun = ueIdsDemandes.length > 0;
 
-    if (troncCommun && req.user.role !== 'admin') {
+    if (troncCommun && !estAdmin(req.user)) {
       return error(res, 'Seul un administrateur peut enregistrer un cours en tronc commun.', 403);
     }
 
@@ -216,7 +217,7 @@ const creerCours = async (req, res, next) => {
           nomFichierOriginal: uploadedFiles[0]?.originalname,
           tailleFichier: uploadedFiles[0]?.size,
           anneAcademique: anneAcademique || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-          statut: req.user.role === 'admin' ? 'publie' : 'en_attente',
+          statut: estAdmin(req.user) ? 'publie' : 'en_attente',
         }, { transaction });
 
         await CoursDocument.bulkCreate(uploadedFiles.map((file) => ({

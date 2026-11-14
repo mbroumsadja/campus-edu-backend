@@ -1,6 +1,7 @@
 // src/modules/sujets/sujets.controller.js
 
 const { Sujet, UE, Utilisateur, Filiere } = require('../../models');
+const { estAdmin } = require('../../utils/roles');
 const { bump } = require('../../utils/audit');
 const { compterTelechargement } = require('../../utils/stats');
 const { Op }      = require('sequelize');
@@ -171,7 +172,7 @@ const creerSujet = async (req, res, next) => {
       mime:          meta.mime || fichierSujet?.mimetype || null,
       sha256,
       corrige_sha256: corrigeSha256,
-      statut:        req.user.role === 'admin' ? 'publie' : 'en_attente',
+      statut:        estAdmin(req.user) ? 'publie' : 'en_attente',
     });
 
     return created(res, sujet, 'Sujet déposé avec succès.');

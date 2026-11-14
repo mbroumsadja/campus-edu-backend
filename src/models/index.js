@@ -90,7 +90,7 @@ const Utilisateur = sequelize.define('Utilisateur', {
     comment:   'Hash bcrypt — jamais en clair',
   },
   role: {
-    type:         DataTypes.ENUM('etudiant', 'enseignant', 'admin'),
+    type:         DataTypes.ENUM('etudiant', 'enseignant', 'admin', 'super_admin'),
     allowNull:    false,
     defaultValue: 'etudiant',
   },
@@ -109,13 +109,6 @@ const Utilisateur = sequelize.define('Utilisateur', {
   },
   derniereConnexion: {
     type: DataTypes.DATE,
-  },
-  // Admin qui a créé le compte (règle : les comptes créés par ADM-0010 restent
-  // en attente jusqu'à sa validation, voir utils/validationComptes.js)
-  cree_par: {
-    type:      DataTypes.INTEGER,
-    allowNull: true,
-    comment:   'Id de l\'admin créateur du compte',
   },
 }, {
   tableName: 'utilisateurs',
@@ -546,8 +539,6 @@ Utilisateur.hasMany(Sujet, { foreignKey: 'enseignant_id', as: 'sujetsDeposes' })
 Sujet.belongsTo(Utilisateur, { foreignKey: 'enseignant_id', as: 'enseignant' });
 // CE-11 : traçabilité du dépôt
 Sujet.belongsTo(Utilisateur, { foreignKey: 'depose_par', as: 'deposant', constraints: true, onDelete: 'SET NULL' });
-// Utilisateur → créateur du compte
-Utilisateur.belongsTo(Utilisateur, { foreignKey: 'cree_par', as: 'createur', constraints: true, onDelete: 'SET NULL' });
 
 // Téléchargements utilisateur → Cours
 Utilisateur.hasMany(Telechargement, { foreignKey: 'utilisateur_id', as: 'telechargements' });

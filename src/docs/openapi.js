@@ -88,7 +88,7 @@ const spec = {
         properties: {
           id: { type: 'integer' }, matricule: { type: 'string', example: '22FS0001' },
           nom: { type: 'string' }, prenom: { type: 'string' }, email: { type: 'string', nullable: true },
-          role: { type: 'string', enum: ['etudiant', 'enseignant', 'admin'] },
+          role: { type: 'string', enum: ['etudiant', 'enseignant', 'admin', 'super_admin'] },
           statut: { type: 'string', enum: ['actif', 'en_attente', 'suspendu'] },
           niveau: { type: 'string', enum: ['L1', 'L2', 'L3', 'M1', 'M2'], nullable: true },
           filiere_id: { type: 'integer', nullable: true },
