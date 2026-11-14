@@ -18,10 +18,11 @@ const { containsText } = require('../../utils/searchText');
 // ──────────────────────────────────────────────────────────────────
 const listerSujets = async (req, res, next) => {
   try {
-    const { ue_id, type, session, annee, search, page = 1, limit = 20 } = req.query;
+    const { ue_id, type, session, annee, search, statut, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    const where = { statut: 'publie' };
+    // Seul un admin peut lister les sujets non publiés (file de validation)
+    const where = { statut: estAdmin(req.user) && ['en_attente', 'publie', 'archive'].includes(statut) ? statut : 'publie' };
     if (ue_id)   where.ue_id   = ue_id;
     if (type)    where.type    = type;
     if (session) where.session = session;
@@ -88,7 +89,7 @@ const getSujet = async (req, res, next) => {
 const telechargerSujet = async (req, res, next) => {
   try {
     const sujet = await Sujet.findByPk(req.params.id);
-    if (!sujet || sujet.statut !== 'publie') return error(res, 'Sujet non disponible.', 404);
+    if (!sujet || (sujet.statut !== 'publie' && !estAdmin(req.user))) return error(res, 'Sujet non disponible.', 404);
 
     const avecCorrige = req.query.corrige === 'true';
 

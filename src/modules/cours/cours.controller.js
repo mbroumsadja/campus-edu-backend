@@ -30,11 +30,11 @@ const lireUeIds = (valeur) => {
 // ──────────────────────────────────────────────────────────────────
 const listerCours = async (req, res, next) => {
   try {
-    const { ue_id, type, annee, search, page = 1, limit = 20 } = req.query;
+    const { ue_id, type, annee, search, statut, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    // Construire le WHERE selon le rôle
-    const where = { statut: 'publie' };
+    // Construire le WHERE selon le rôle : seul un admin peut lister les cours non publiés (file de validation)
+    const where = { statut: estAdmin(req.user) && ['en_attente', 'publie', 'archive'].includes(statut) ? statut : 'publie' };
 
     if (ue_id) where.ue_id = ue_id;
     if (type) where.type = type;
@@ -435,7 +435,7 @@ const telechargerDocument = async (req, res, next) => {
 
     const cours = await Cours.findByPk(coursId, { attributes: ['id', 'statut'] });
     if (!cours) return error(res, 'Cours introuvable.', 404);
-    if (cours.statut !== 'publie') return error(res, 'Cours non disponible.', 403);
+    if (cours.statut !== 'publie' && !estAdmin(req.user)) return error(res, 'Cours non disponible.', 403);
 
     const document = await CoursDocument.findOne({ where: { id: documentId, cours_id: coursId } });
     if (!document) return error(res, 'Document introuvable.', 404);

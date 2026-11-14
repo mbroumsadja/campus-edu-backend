@@ -5,6 +5,7 @@ const { body }   = require('express-validator');
 const { Sujet } = require('../../models');
 const controller = require('./sujets.controller');
 const { verifyToken, authorize, canManageOwnedResource } = require('../../middlewares/auth');
+const optionalAuth = require('../../middlewares/optionalAuth');
 const { upload, handleUploadError } = require('../../middlewares/upload');
 const { validate } = require('../../middlewares/validate');
 const downloadLimiter = require('../../middlewares/downloadLimiter');
@@ -29,7 +30,7 @@ router.get('/:id',        controller.getSujet);
 // Conservé pour les anciennes versions de l'application.
 router.get('/:id/telecharger',
   deprecated((req) => `/api/v1/search/documents/telecharger?type=sujet&id=${encodeURIComponent(req.params.id)}`),
-  downloadLimiter, controller.telechargerSujet);
+  optionalAuth, downloadLimiter, controller.telechargerSujet);
 
 router.post('/',
   authorize('enseignant', 'admin'),

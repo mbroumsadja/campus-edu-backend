@@ -44,4 +44,17 @@ const tableauDeBord = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { tableauDeBord };
+// GET /stats/a-traiter — compteurs des badges de l'admin (contenus à valider, demandes nouvelles)
+const aTraiter = async (_req, res, next) => {
+  try {
+    const { Cours, Sujet, Demande } = require('../../models');
+    const [cours, sujets, demandes] = await Promise.all([
+      Cours.count({ where: { statut: 'en_attente' } }),
+      Sujet.count({ where: { statut: 'en_attente' } }),
+      Demande.count({ where: { statut: 'nouvelle' } }),
+    ]);
+    return success(res, { cours_en_attente: cours, sujets_en_attente: sujets, demandes_nouvelles: demandes });
+  } catch (err) { next(err); }
+};
+
+module.exports = { tableauDeBord, aTraiter };
