@@ -206,6 +206,13 @@ const Cours = sequelize.define('Cours', {
     type:         DataTypes.ENUM('en_attente', 'publie', 'archive'),
     defaultValue: 'en_attente',
   },
+  categorie: {
+    type:         DataTypes.STRING(20),
+    allowNull:    false,
+    defaultValue: 'cours',
+    validate:     { isIn: [['cours', 'support']] },
+    comment:      "'cours' ou 'support' (support de révision)",
+  },
   anneAcademique: {
     type:    DataTypes.STRING(9),
     comment: 'Ex: 2023-2024',

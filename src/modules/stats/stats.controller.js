@@ -48,12 +48,13 @@ const tableauDeBord = async (req, res, next) => {
 const aTraiter = async (_req, res, next) => {
   try {
     const { Cours, Sujet, Demande } = require('../../models');
-    const [cours, sujets, demandes] = await Promise.all([
-      Cours.count({ where: { statut: 'en_attente' } }),
+    const [cours, supports, sujets, demandes] = await Promise.all([
+      Cours.count({ where: { statut: 'en_attente', categorie: 'cours' } }),
+      Cours.count({ where: { statut: 'en_attente', categorie: 'support' } }),
       Sujet.count({ where: { statut: 'en_attente' } }),
       Demande.count({ where: { statut: 'nouvelle' } }),
     ]);
-    return success(res, { cours_en_attente: cours, sujets_en_attente: sujets, demandes_nouvelles: demandes });
+    return success(res, { cours_en_attente: cours, supports_en_attente: supports, sujets_en_attente: sujets, demandes_nouvelles: demandes });
   } catch (err) { next(err); }
 };
 

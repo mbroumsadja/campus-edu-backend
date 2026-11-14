@@ -116,6 +116,7 @@ const spec = {
         properties: {
           id: { type: 'integer' }, titre: { type: 'string' }, description: { type: 'string', nullable: true },
           type: { type: 'string', enum: ['pdf', 'video', 'slide', 'autre'] },
+          categorie: { type: 'string', enum: ['cours', 'support'], description: 'support = support de révision' },
           statut: { type: 'string', enum: ['en_attente', 'publie', 'archive'] },
           anneAcademique: { type: 'string', example: '2025-2026' },
           vues: { type: 'integer' }, ue_id: { type: 'integer' }, enseignant_id: { type: 'integer' },

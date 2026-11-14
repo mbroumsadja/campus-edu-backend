@@ -30,11 +30,15 @@ const lireUeIds = (valeur) => {
 // ──────────────────────────────────────────────────────────────────
 const listerCours = async (req, res, next) => {
   try {
-    const { ue_id, type, annee, search, statut, page = 1, limit = 20 } = req.query;
+    const { ue_id, type, annee, search, statut, categorie, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
     // Construire le WHERE selon le rôle : seul un admin peut lister les cours non publiés (file de validation)
     const where = { statut: estAdmin(req.user) && ['en_attente', 'publie', 'archive'].includes(statut) ? statut : 'publie' };
+
+    // Les supports de révision sont séparés des cours : par défaut on ne renvoie que les cours
+    // (?categorie=support pour les supports, ?categorie=tous pour les deux).
+    if (categorie !== 'tous') where.categorie = categorie === 'support' ? 'support' : 'cours';
 
     if (ue_id) where.ue_id = ue_id;
     if (type) where.type = type;
@@ -171,6 +175,14 @@ const creerCours = async (req, res, next) => {
 
     const { titre, description, type, ue_id, anneAcademique } = req.body;
 
+    // Catégorie : 'support' = support de révision. Compatibilité : les anciens clients envoient
+    // encore le préfixe « 100 » dans le titre, sans champ categorie.
+    const PREFIXE_SUPPORT = /^\s*100\s+/i;
+    const categorieCours = req.body.categorie === 'support'
+      || (req.body.categorie === undefined && PREFIXE_SUPPORT.test(String(titre || '')))
+      ? 'support' : 'cours';
+    const titreFinal = categorieCours === 'support' ? String(titre).replace(PREFIXE_SUPPORT, '').trim() : titre;
+
     // Tronc commun : le même cours est copié dans plusieurs UE (une par filière),
     // toutes les copies pointent vers les mêmes fichiers. Réservé à l'admin.
     const ueIdsDemandes = lireUeIds(req.body.ue_ids);
@@ -208,9 +220,10 @@ const creerCours = async (req, res, next) => {
       const creees = [];
       for (const ueCible of ues) {
         const cours = await Cours.create({
-          titre,
+          titre: titreFinal,
           description,
           type: type || 'pdf',
+          categorie: categorieCours,
           ue_id: ueCible.id,
           enseignant_id: req.user.id,
           cheminFichier: uploadedFiles[0]?.path || uploadedFiles[0]?.url || null,
@@ -255,11 +268,19 @@ const modifierCours = async (req, res, next) => {
     const cours = await Cours.findByPk(req.params.id);
     if (!cours) return error(res, 'Cours introuvable.', 404);
 
-    const { titre, description, type, ue_id, anneAcademique } = req.body;
+    const { titre, description, type, ue_id, anneAcademique, categorie } = req.body;
     const updates = {};
 
+    if (typeof categorie !== 'undefined') {
+      if (!['cours', 'support'].includes(categorie)) return error(res, 'Catégorie invalide.', 400);
+      updates.categorie = categorie;
+    }
+    const categorieFinale = updates.categorie || cours.categorie;
+
     if (typeof titre !== 'undefined') {
-      const cleanedTitre = String(titre).trim();
+      let cleanedTitre = String(titre).trim();
+      // Compatibilité : un support ne garde plus le préfixe « 100 » dans son titre
+      if (categorieFinale === 'support') cleanedTitre = cleanedTitre.replace(/^100\s+/i, '').trim();
       if (!cleanedTitre) return error(res, 'Le titre est obligatoire.', 400);
       updates.titre = cleanedTitre;
     }
