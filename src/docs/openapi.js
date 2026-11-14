@@ -427,7 +427,7 @@ const spec = {
       post: { tags: ['Demandes'], summary: 'Demander un sujet manquant ou signaler un sujet (public, 5 / heure / IP)',
         description: 'Anti-spam : limite par IP, champ piège `site_web` (laisser vide, masqué dans le formulaire), message 10–1000 caractères, 1 lien maximum, doublon sur 24 h ignoré. L\'adresse IP n\'est pas conservée. Connexion facultative.',
         requestBody: jsonBody({ type: 'object', required: ['type', 'message'], properties: {
-          type: { type: 'string', enum: ['sujet_manquant', 'signalement'] },
+          type: { type: 'string', enum: ['sujet_manquant', 'signalement', 'cours_demande'] },
           message: { type: 'string', minLength: 10, maxLength: 1000 },
           contact: { type: 'string', maxLength: 150, description: 'E-mail ou téléphone, facultatif.' },
           ue_id: { type: 'integer', description: 'Obligatoire pour `sujet_manquant`.' },
@@ -439,7 +439,7 @@ const spec = {
       get: { tags: ['Demandes'], summary: 'Consulter les demandes (admin)', security: secured,
         parameters: [...pageParams,
           { name: 'statut', in: 'query', schema: { type: 'string', enum: ['nouvelle', 'en_cours', 'traitee', 'rejetee'] } },
-          { name: 'type', in: 'query', schema: { type: 'string', enum: ['sujet_manquant', 'signalement'] } }],
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['sujet_manquant', 'signalement', 'cours_demande'] } }],
         responses: { 200: ok('Liste', paginatedOf({ type: 'object', properties: {
           id: { type: 'integer' }, type: { type: 'string' }, message: { type: 'string' }, contact: { type: 'string', nullable: true },
           statut: { type: 'string' }, created_at: { type: 'string', format: 'date-time' },

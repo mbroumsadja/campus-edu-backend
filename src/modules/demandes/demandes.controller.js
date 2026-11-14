@@ -17,7 +17,13 @@ const creerDemande = async (req, res, next) => {
     if (req.body.site_web) return created(res, { id: null }, 'Demande reçue. Merci !');
 
     const { type, ue_id, sujet_id } = req.body;
-    const message = String(req.body.message).trim();
+    const nomCours = req.body.nom_cours ? String(req.body.nom_cours).trim() : null;
+    const nomEtudiant = (req.body.nom_etudiant && String(req.body.nom_etudiant).trim())
+      || (req.user ? `${req.user.prenom} ${req.user.nom}`.trim() : null);
+    if (type === 'cours_demande' && !nomEtudiant) return error(res, 'Le nom de l\'étudiant est obligatoire.', 400);
+    const message = req.body.message && String(req.body.message).trim()
+      ? String(req.body.message).trim()
+      : `Demande du cours « ${nomCours} » par ${nomEtudiant}.`;
     const contact = req.body.contact ? String(req.body.contact).trim() : null;
 
     if (nbLiens(message) > 1) return error(res, 'Les messages contenant plusieurs liens sont refusés.', 400);
@@ -32,6 +38,7 @@ const creerDemande = async (req, res, next) => {
       where: {
         empreinte_auteur: auteur, type,
         ue_id: ue_id || null, sujet_id: sujet_id || null,
+        ...(type === 'cours_demande' && { nom_cours: nomCours }),
         created_at: { [Op.gt]: new Date(Date.now() - 24 * 3600 * 1000) },
       },
       attributes: ['id'],
@@ -39,7 +46,7 @@ const creerDemande = async (req, res, next) => {
     if (doublon) return success(res, { id: doublon.id }, 'Demande déjà reçue. Merci !');
 
     const demande = await Demande.create({
-      type, message, contact, ue_id: ue_id || null, sujet_id: sujet_id || null,
+      type, message, contact, nom_etudiant: nomEtudiant, nom_cours: nomCours, ue_id: ue_id || null, sujet_id: sujet_id || null,
       auteur_id: req.user?.id || null, empreinte_auteur: auteur,
     });
     return created(res, { id: demande.id }, 'Demande reçue. Merci !');

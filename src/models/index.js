@@ -449,9 +449,11 @@ const Session = sequelize.define('Session', {
 // ══════════════════════════════════════════════════════════════════
 const Demande = sequelize.define('Demande', {
   id:      { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  type:    { type: DataTypes.ENUM('sujet_manquant', 'signalement'), allowNull: false },
+  type:    { type: DataTypes.ENUM('sujet_manquant', 'signalement', 'cours_demande'), allowNull: false },
   message: { type: DataTypes.TEXT, allowNull: false, validate: { len: [10, 1000] } },
   contact: { type: DataTypes.STRING(150), comment: 'E-mail ou téléphone, facultatif' },
+  nom_etudiant: { type: DataTypes.STRING(150), comment: 'Nom de l\'étudiant qui demande un cours' },
+  nom_cours:    { type: DataTypes.STRING(200), comment: 'Nom du cours demandé (type cours_demande)' },
   statut:  { type: DataTypes.ENUM('nouvelle', 'en_cours', 'traitee', 'rejetee'), allowNull: false, defaultValue: 'nouvelle' },
   empreinte_auteur: { type: DataTypes.CHAR(64), comment: 'HMAC(IP) : détecte les doublons sans conserver l\'IP' },
 }, {
