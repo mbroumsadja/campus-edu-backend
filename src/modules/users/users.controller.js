@@ -3,6 +3,7 @@
 const bcrypt        = require('bcryptjs');
 const { Utilisateur, Filiere } = require('../../models');
 const { audit } = require('../../utils/audit');
+const { MATRICULE_VALIDATEUR, statutInitial, activationInterdite } = require('../../utils/validationComptes');
 const { revoquer } = require('../auth/sessions');
 const { Op }        = require('sequelize');
 const { containsText } = require('../../utils/searchText');
@@ -33,7 +34,10 @@ const listerUtilisateurs = async (req, res, next) => {
     const { count, rows } = await Utilisateur.findAndCountAll({
       where,
       attributes: { exclude: ['password', 'refreshToken'] },
-      include: [{ model: Filiere, as: 'filiere', attributes: ['id', 'nom', 'code'] }],
+      include: [
+        { model: Filiere, as: 'filiere', attributes: ['id', 'nom', 'code'] },
+        { model: Utilisateur, as: 'createur', attributes: ['id', 'matricule'] },
+      ],
       order:  [['createdAt', 'DESC']],
       limit:  parseInt(limit),
       offset: parseInt(offset),
@@ -52,7 +56,10 @@ const getUtilisateur = async (req, res, next) => {
   try {
     const user = await Utilisateur.findByPk(req.params.id, {
       attributes: { exclude: ['password', 'refreshToken'] },
-      include: [{ model: Filiere, as: 'filiere' }],
+      include: [
+        { model: Filiere, as: 'filiere' },
+        { model: Utilisateur, as: 'createur', attributes: ['id', 'matricule'] },
+      ],
     });
     if (!user) return error(res, 'Utilisateur introuvable.', 404);
     return success(res, user);
@@ -76,7 +83,9 @@ const creerUtilisateur = async (req, res, next) => {
       matricule: matricule.toUpperCase(),
       nom, prenom, email, role, niveau, filiere_id,
       password: mdpHache,
-      statut:   'actif',
+      // Comptes créés par ADM-0010 : en attente jusqu'à sa validation
+      statut:   statutInitial(req.user),
+      cree_par: req.user.id,
     });
 
     await audit({
@@ -87,7 +96,13 @@ const creerUtilisateur = async (req, res, next) => {
     });
 
     const { password: _, refreshToken: __, ...userSafe } = user.toJSON();
-    return created(res, userSafe, 'Utilisateur créé avec succès.');
+    return created(
+      res,
+      userSafe,
+      user.statut === 'en_attente'
+        ? `Utilisateur créé. Le compte reste en attente de validation par ${MATRICULE_VALIDATEUR}.`
+        : 'Utilisateur créé avec succès.'
+    );
   } catch (err) {
     next(err);
   }
@@ -103,6 +118,10 @@ const modifierUtilisateur = async (req, res, next) => {
 
     const { nom, prenom, email, statut, filiere_id, niveau } = req.body;
     const updates = {};
+
+    if (statut === 'actif' && await activationInterdite(req.user, user)) {
+      return error(res, `Ce compte doit être validé par ${MATRICULE_VALIDATEUR}.`, 403);
+    }
 
     if (nom)        updates.nom        = nom;
     if (prenom)     updates.prenom     = prenom;
@@ -136,6 +155,9 @@ const changerStatut = async (req, res, next) => {
     if (!user) return error(res, 'Utilisateur introuvable.', 404);
 
     const { statut } = req.body;
+    if (statut === 'actif' && await activationInterdite(req.user, user)) {
+      return error(res, `Ce compte doit être validé par ${MATRICULE_VALIDATEUR}.`, 403);
+    }
     await user.update({ statut });
 
     // Si on suspend, on invalide aussi sa session
